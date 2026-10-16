@@ -6,10 +6,10 @@ import { HeureArticle } from "@/components/horodatage";
 import type { ArticleAffiche } from "@/lib/veille";
 
 const REGIONS = [
-  { cle: "tous", libelle: "Tout" },
-  { cle: "US", libelle: "États-Unis" },
-  { cle: "Europe", libelle: "Europe" },
-  { cle: "Monde", libelle: "Monde" },
+  { cle: "tous", libelle: "Tout", court: "Tout" },
+  { cle: "US", libelle: "États-Unis", court: "US" },
+  { cle: "Europe", libelle: "Europe", court: "Europe" },
+  { cle: "Monde", libelle: "Monde", court: "Monde" },
 ] as const;
 
 const CATEGORIES: Record<string, string> = {
@@ -70,19 +70,20 @@ export function FilActualites({ articles, fenetreJours }: { articles: ArticleAff
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2.5">
-        <div role="group" aria-label="Région" className="flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1">
+        <div role="group" aria-label="Région" className="grid grid-cols-4 gap-1 rounded-xl bg-surface-2 p-1">
           {REGIONS.map((r) => (
             <button
               key={r.cle}
               type="button"
               aria-pressed={region === r.cle}
               onClick={() => changer(() => setRegion(r.cle))}
-              className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`min-w-0 rounded-lg px-1.5 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
                 region === r.cle ? "bg-surface-3 text-texte shadow-sm" : "text-attenue hover:text-texte"
               }`}
             >
-              {r.libelle}
-              <span className="chiffres ml-1.5 text-xs text-discret">{parRegion[r.cle] ?? 0}</span>
+              <span className="sm:hidden">{r.court}</span>
+              <span className="hidden sm:inline">{r.libelle}</span>
+              <span className="chiffres ml-1 text-xs text-discret sm:ml-1.5">{parRegion[r.cle] ?? 0}</span>
             </button>
           ))}
         </div>

@@ -59,7 +59,9 @@ export function SectionCalendrier({ calendrier }: { calendrier: EtatCalendrier }
     >
       <div className="flex flex-col gap-5">
         <div>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">Prochaines réunions</h3>
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">
+            Prochaines réunions <span className="normal-case tracking-normal">· heures dans votre fuseau</span>
+          </h3>
           {calendrier.reunions.length === 0 ? (
             <p className="text-sm text-attenue">Aucune date de réunion à venir enregistrée.</p>
           ) : (
@@ -74,12 +76,12 @@ export function SectionCalendrier({ calendrier }: { calendrier: EtatCalendrier }
                     {r.banque}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
+                    <p className="flex flex-wrap items-baseline gap-x-1.5 text-sm font-medium">
                       {formaterDateSeance(r.date)}
-                      {r.provisoire && <span className="ml-1.5 text-xs font-normal text-alerte">date provisoire</span>}
+                      {r.provisoire && <span className="text-xs font-normal text-alerte">date provisoire</span>}
                     </p>
                     <p className="text-xs text-attenue">
-                      Annonce à <DateLocale iso={r.annonceUtc} options={{ hour: "2-digit", minute: "2-digit" }} /> (votre heure)
+                      Annonce à <DateLocale iso={r.annonceUtc} options={{ hour: "2-digit", minute: "2-digit" }} />
                     </p>
                   </div>
                   <span className="shrink-0 text-xs font-medium">
