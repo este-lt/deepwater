@@ -4,6 +4,7 @@ import { SectionFondamentales } from "@/components/fondamentales/section-fondame
 import { Avertissement, EnTete } from "@/components/en-tete";
 import { CarteInstrument } from "@/components/marches/carte-instrument";
 import { GraphiquePrix } from "@/components/marches/graphique-prix";
+import { Reperes } from "@/components/reperes";
 import { SectionFlux } from "@/components/flux/section-flux";
 import { SectionMacro } from "@/components/macro/section-macro";
 import { SectionTaux } from "@/components/macro/section-taux";
@@ -57,10 +58,23 @@ export default async function TableauDeBord() {
           <h2 id="titre-indices" className="text-sm font-medium text-attenue">
             Indices suivis
           </h2>
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr))]">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.15fr)]">
             {indices.map((r, i) => (
               <CarteInstrument key={r.ticker.id} resume={r} delai={i * 60} />
             ))}
+            <div className="md:col-span-2 xl:col-span-1">
+              <Reperes
+                donnees={{
+                  reunion: calendrier.reunions[0] ? { banque: calendrier.reunions[0].banque, annonceUtc: calendrier.reunions[0].annonceUtc } : null,
+                  biais: biais.courants.map((b) => ({ nom: b.nom, biais: b.biais, score: b.score })),
+                  actualites: {
+                    total: veille.articles.length,
+                    fortes: veille.articles.filter((a) => a.impact_niveau === "fort").length,
+                    jours: veille.fenetreJours,
+                  },
+                }}
+              />
+            </div>
           </div>
         </section>
 

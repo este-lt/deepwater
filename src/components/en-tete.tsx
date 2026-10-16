@@ -9,14 +9,15 @@ export function EnTete({ estAdmin }: { estAdmin: boolean }) {
         <Link href="/" className="rounded-lg">
           <Logo />
         </Link>
-        <nav className="flex items-center gap-1 text-sm">
-          <Link href="/" className="rounded-lg px-3 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte">
-            Tableau de bord
+        <nav className="flex min-w-0 items-center gap-1 text-sm">
+          <Link href="/" className="whitespace-nowrap rounded-lg px-2.5 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte sm:px-3">
+            <span className="sm:hidden">Accueil</span>
+            <span className="hidden sm:inline">Tableau de bord</span>
           </Link>
           {estAdmin && (
             <Link
               href="/admin"
-              className="rounded-lg px-3 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte"
+              className="whitespace-nowrap rounded-lg px-2.5 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte sm:px-3"
             >
               Admin
             </Link>

@@ -21,7 +21,7 @@ const CATEGORIES: Record<string, string> = {
   initie_institution: "Initiés / institutions",
 };
 
-const PAR_PAGE = 20;
+const PAR_PAGE = 8;
 
 function Filtre({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: ReactNode }) {
   return (
