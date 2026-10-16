@@ -11,7 +11,8 @@
     "test:comptes": "node scripts/tests/creer-comptes-test.mjs",
     "test:rls": "node scripts/tests/rls.mjs",
     "test:webhook": "node scripts/tests/webhook-signature.mjs",
-    "test:secours": "node scripts/tests/profil-secours.mjs"
+    "test:secours": "node scripts/tests/profil-secours.mjs",
+    "test:liens": "node scripts/tests/liens-connexion.mjs"
   },
   "dependencies": {
     "@clerk/localizations": "4.23.0",
