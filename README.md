@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Deepwater
 
-## Getting Started
+Terminal de suivi de marché gratuit, centré sur le **S&P 500** et le **Nasdaq-100** :
+cours de clôture et moyennes mobiles, biais quotidien par règles, taux du Trésor,
+macroéconomie américaine, flux d'initiés et d'institutions (SEC), veille d'actualités
+filtrée et calendrier économique. Données publiques gratuites, différées, jamais en temps
+réel. Les sources et leurs limites sont détaillées dans [docs/SOURCES.md](docs/SOURCES.md).
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+| Couche | Rôle |
+|---|---|
+| Next.js 16 (App Router, TypeScript strict, Tailwind) sur Railway | interface ; lit la base avec le jeton Clerk de l'utilisateur |
+| Clerk | connexion ; webhook signé et fonction de secours pour créer le profil |
+| Supabase Postgres + RLS | données de marché partagées en lecture, paramètres et validations par utilisateur |
+| Supabase Edge Functions (`supabase/functions`) | collectes (FRED, Alpha Vantage, SEC, RSS), calcul du biais |
+| pg_cron + pg_net | planification ; chaque tâche écrit dans `logs_taches` (page Admin) |
+| Supabase Vault | secrets lus côté serveur uniquement |
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Les utilisateurs ne déclenchent jamais d'appel à une API externe : l'interface lit la
+base, et le seul calcul à la demande (biais) n'utilise que les données déjà collectées.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Installation locale
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. `npm install`
+2. Copier `.env.example` en `.env.local` et renseigner les valeurs (jamais commité).
+3. `npm run dev`, puis ouvrir http://localhost:3000.
 
-## Learn More
+Les migrations sont dans `supabase/migrations`, les fonctions dans `supabase/functions`
+(code partagé dans `_shared`). Les règles modifiables :
 
-To learn more about Next.js, take a look at the following resources:
+- filtre des actualités : `supabase/functions/_shared/filtre-actualites.ts`
+- biais quotidien : `supabase/functions/calcul-biais/regles.ts`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Commandes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Commande | Effet |
+|---|---|
+| `npm run build` | compilation, puis recherche de fuites de secrets |
+| `npm run lint` | ESLint |
+| `npx deno test --allow-read supabase/functions` | tests des Edge Functions (filtre, SEC, Alpha Vantage, biais) |
+| `npm run test:comptes` | crée ou rafraîchit les deux comptes de test (Clerk) |
+| `npm run test:rls -- <id d'un biais>` | isolation RLS entre les deux comptes |
+| `npm run test:webhook` | signature et idempotence du webhook Clerk |
+| `npm run test:secours` | création de profil de secours à la première connexion |
+| `npm run test:liens` | liens de connexion des comptes de test (valables 7 jours) |
 
-## Deploy on Vercel
+## Avertissement
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Le biais quotidien est un scoring automatique basé sur des règles, pas une prédiction
+garantie ni un conseil en investissement. L'exécution des ordres se fait exclusivement
+chez votre broker, en dehors de Deepwater.

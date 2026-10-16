@@ -20,21 +20,51 @@ export interface ResultatsRecherche {
   total: number;
 }
 
+// Les titres d'actualités sont en anglais : quelques équivalents pour les recherches en français.
+const EQUIVALENTS: Record<string, string[]> = {
+  inflation: ["inflation", "CPI", "consumer prices"],
+  chomage: ["unemployment", "jobless"],
+  emploi: ["payrolls", "jobs report"],
+  emplois: ["payrolls", "jobs report"],
+  petrole: ["oil", "crude"],
+  taux: ["rate", "yield"],
+  resultats: ["earnings", "results"],
+  fusion: ["merger", "takeover"],
+  acquisition: ["acquire", "acquisition"],
+  "banque centrale": ["central bank"],
+  bce: ["ECB"],
+  croissance: ["GDP", "growth"],
+  pib: ["GDP"],
+};
+const sansAccents = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
 const unique = <T,>(lignes: T[], cle: (l: T) => string | number) => [...new Map(lignes.map((l) => [cle(l), l])).values()];
 
 export async function rechercher(supabase: ClientSupabase, q: string): Promise<ResultatsRecherche> {
   const motif = `%${q}%`;
-  const [tickersSymbole, tickersNom, entSymbole, entNom, entSecteur, inst, articles, inities, initiesEnt, calendrier] = await Promise.all([
+  const termes = [q, ...(EQUIVALENTS[sansAccents(q)] ?? [])].slice(0, 4);
+  const [tickersSymbole, tickersNom, entSymbole, entNom, entSecteur, inst, articles, articlesLies, inities, initiesEnt, calendrier] = await Promise.all([
     supabase.from("tickers_suivis").select("symbole, nom, classe_actif, actif_bool, prioritaire").ilike("symbole", motif).limit(10),
     supabase.from("tickers_suivis").select("symbole, nom, classe_actif, actif_bool, prioritaire").ilike("nom", motif).limit(10),
     supabase.from("entreprises_suivies_sec").select("symbole, nom, secteur, cik").ilike("symbole", motif).limit(10),
     supabase.from("entreprises_suivies_sec").select("symbole, nom, secteur, cik").ilike("nom", motif).limit(10),
     supabase.from("entreprises_suivies_sec").select("symbole, nom, secteur, cik").ilike("secteur", motif).limit(10),
     supabase.from("institutions_suivies").select("nom, cik").ilike("nom", motif).limit(10),
+    Promise.all(
+      termes.map((t) =>
+        supabase
+          .from("articles")
+          .select("id, titre, source, url, date_publication, categorie, impact_niveau")
+          .ilike("titre", `%${t}%`)
+          .order("date_publication", { ascending: false })
+          .limit(15)
+      ),
+    ).then((rs) => ({ data: rs.flatMap((r) => r.data ?? []), error: rs.find((r) => r.error)?.error ?? null })),
+    // Articles rattachés à un symbole (ex. NVDA pour un titre qui cite « Nvidia »).
     supabase
       .from("articles")
       .select("id, titre, source, url, date_publication, categorie, impact_niveau")
-      .ilike("titre", motif)
+      .contains("tickers_lies", [q.toUpperCase()])
       .order("date_publication", { ascending: false })
       .limit(15),
     supabase
@@ -59,7 +89,7 @@ export async function rechercher(supabase: ClientSupabase, q: string): Promise<R
       .order("date_evenement", { ascending: true })
       .limit(10),
   ]);
-  for (const r of [tickersSymbole, tickersNom, entSymbole, entNom, entSecteur, inst, articles, inities, initiesEnt, calendrier]) {
+  for (const r of [tickersSymbole, tickersNom, entSymbole, entNom, entSecteur, inst, articles, articlesLies, inities, initiesEnt, calendrier]) {
     if (r.error) throw new Error(`Recherche impossible : ${r.error.message}`);
   }
 
@@ -87,7 +117,9 @@ export async function rechercher(supabase: ClientSupabase, q: string): Promise<R
     })),
     entreprises: unique([...(entSymbole.data ?? []), ...(entNom.data ?? []), ...(entSecteur.data ?? [])], (e) => e.symbole),
     institutions,
-    articles: articles.data ?? [],
+    articles: unique([...(articles.data ?? []), ...(articlesLies.data ?? [])], (a) => a.id)
+      .sort((a, b) => b.date_publication.localeCompare(a.date_publication))
+      .slice(0, 15),
     transactions: unique([...(initiesEnt.data ?? []), ...(inities.data ?? [])], (t) => t.id).map((t) => ({
       ...t,
       montant: t.montant === null ? null : Number(t.montant),

@@ -143,3 +143,48 @@ investissement. Règles modifiables dans `supabase/functions/calcul-biais/regles
 | Consensus des prévisions macro | payant partout |
 | Ratios Alpha Vantage `OVERVIEW` | endpoint payant ; ratios recalculés depuis les états financiers |
 | Ouverture, plus haut, plus bas des indices | FRED ne publie que la clôture |
+
+## Hébergement et exploitation
+
+### Supabase (plan gratuit)
+
+- Supabase met en pause les projets gratuits qui montrent trop peu d'activité de base de
+  données sur 7 jours. Un e-mail d'avertissement arrive environ une semaine avant la pause,
+  puis un e-mail de confirmation. Un projet en pause se relance pendant 90 jours depuis le
+  tableau de bord (*Resume project*) ; au-delà, il n'est plus restaurable depuis Supabase.
+  Source : supabase.com/docs/guides/platform/free-project-pausing (consultée le 16/10/2026).
+- Ici, les tâches planifiées écrivent en base toutes les 10 à 30 minutes (collectes,
+  surveillance), ce qui devrait suffire à éviter la pause. En cas d'e-mail d'avertissement :
+  ouvrir le projet dans le tableau de bord Supabase. Seul le plan Pro supprime la pause.
+- Pas de sauvegarde téléchargeable sur le plan gratuit.
+
+### Railway
+
+- Le site Next.js tourne sur un seul service Railway (`web`). Consommation mesurée sur
+  24 h le 16/10/2026 : environ 0,12 Go de mémoire, processeur quasi nul.
+- Offre d'essai : crédit unique de 5 $. Plan Hobby : abonnement mensuel incluant 5 $
+  d'usage ; l'usage au-delà est facturé. Source : docs.railway.com/pricing (16/10/2026).
+  Vérifier le crédit restant dans Railway, rubrique *Usage*.
+- **Déploiement automatique non branché** : l'application GitHub de Railway n'est pas
+  installée sur le dépôt, donc un `git push` ne déclenche pas de déploiement. Pour
+  l'activer : Railway, service `web`, *Settings*, *Source*, reconnecter le dépôt
+  `este-lt/deepwater` et accepter l'installation de l'application Railway sur GitHub.
+  En attendant, chaque déploiement est relancé à la main (reconnexion de la source).
+- Point de santé public : `/api/health` (base, dernière tâche réussie, version déployée).
+
+### Alertes du conseiller de sécurité Supabase (volontaires)
+
+| Alerte | Raison |
+|---|---|
+| RLS sans politique sur `cache_api` et `appels_fonctions` | tables internes réservées au service role : aucune politique = aucun accès client, c'est voulu |
+| `sante()` exécutable sans connexion | alimente `/api/health` ; ne renvoie que l'état de la base, l'heure et la dernière tâche réussie |
+| `est_admin()`, `admin_etat_cron()`, `reserver_calcul_manuel()`, `derniere_reussite()` exécutables par un utilisateur connecté | nécessaires à l'interface ; `admin_etat_cron()` refuse tout non-admin, `reserver_calcul_manuel()` applique la limite de fréquence, `derniere_reussite()` ne renvoie qu'une heure |
+
+### Contrôles
+
+- Isolation RLS : `npm run test:comptes` puis `npm run test:rls -- <id d'un biais>`
+  (39 contrôles avec deux comptes de test, en base et via l'API).
+- Webhook Clerk signé et idempotent : `npm run test:webhook`.
+- Fuites de secrets : `npm run build` lance `scripts/verifier-secrets.mjs` (dépôt git,
+  variables `NEXT_PUBLIC_` et bundle navigateur).
+- Tests des Edge Functions : `npx deno test --allow-read supabase/functions`.
