@@ -126,6 +126,9 @@ export const REGLES = {
     /\bbiggest moves\b|\bpremarket\b|\bafter[- ]hours\b|\bmidday\b|\bmovers\b/i,
     /\b(earnings|quarterly|revenue|profits?|guidance|IPO|float|listing|takeover|mergers?|acquir\w*|acquisition|buyout|stake|activist|CEO|chief executive|shareholders?|dividend|buyback|spin-?off|layoffs?|bankruptcy)\b/i,
     /\b(shares|stock) (of|in)\b|\bshares (jump|fall|rise|drop|surge|slump|sink|soar|tumble|plunge)/i,
+    /\b(settle\w*|lawsuit|probe|fined|penalty|violations?|indicted|Risk Report)\b/i,
+    // Articles de fond (« The once-obscure tech… », « The Riskiest Corner… ») : pas des faits de marché.
+    /^(The|A|An)\s/,
     // Politique locale (États, villes) : sans effet sur les marchés suivis.
     /\b(governor|state legislature|state senate|statehouse|mayor|city council|county|lawmakers in [A-Z]\w+)\b/i,
     // Rubriques non informatives.
@@ -154,8 +157,15 @@ const ENTITES: [RegExp, string][] = [
 ];
 
 const EUROPE = /\b(ECB|eurozone|euro area|European|Europe|EU|UK|U\.K\.|Britain|British|Germany|German|France|French|Italy|Italian|Spain|Spanish|Swiss|Switzerland|FTSE|DAX|CAC|Stoxx|London|gilts?|bunds?|Bank of England|BoE|Lagarde|Bailey)\b/i;
+// Hors États-Unis et Europe, seuls la Chine et le Japon pèsent sur les indices suivis
+// (sauf mouvement de marché d'ampleur, gardé quel que soit le pays).
+const MONDE_MAJEUR = /\b(China|Chinese|Japan|Japanese|BoJ|Bank of Japan|PBOC|yen|yuan|Nikkei|Hang Seng|Asia|Asian)\b/i;
+// Politique commerciale : seulement si les États-Unis sont concernés.
+const ETATS_UNIS = /\b(U\.?S\.?|United States|America|American|Trump|White House|Washington|Congress|Treasury|Fed)\b/;
+const COMMERCE = /\btariffs?\b|\btrade (war|deal|talks|truce|tensions|pact)\b|\bexport (controls|curbs|ban)\b/i;
+
 // Hors États-Unis et Europe : les sources sont américaines, donc « US » par défaut.
-const AUTRES_PAYS = /\b(India|Indian|China|Chinese|Japan|Japanese|Asia|Asian|Indonesia|Indonesian|Korea|Korean|Australia|Australian|Brazil|Mexico|Canada|Canadian|LatAm|Hong Kong|Taiwan|Philippine|Saudi|Gulf|Turkey|Russia|Russian|Nikkei|Hang Seng|BoJ|Bank of Japan|PBOC|yen|yuan|Ueda)\b/i;
+const AUTRES_PAYS =/\b(India|Indian|China|Chinese|Japan|Japanese|Asia|Asian|Indonesia|Indonesian|Korea|Korean|Australia|Australian|Brazil|Mexico|Canada|Canadian|LatAm|Hong Kong|Taiwan|Philippine|Saudi|Gulf|Turkey|Russia|Russian|Nikkei|Hang Seng|BoJ|Bank of Japan|PBOC|yen|yuan|Ueda)\b/i;
 
 export interface ArticleBrut {
   source: string;
@@ -196,6 +206,12 @@ export function classerArticle(a: ArticleBrut): Decision {
     const motif = c.motifs.find((m) => m.test(c.champ === "tout" ? `${a.titre} ${a.extrait}` : a.titre));
     if (!motif) continue;
     if (c.exclusions?.some((m) => m.test(a.titre))) continue;
+    if (region === "Monde" && c.cle !== "marche" && !MONDE_MAJEUR.test(a.titre)) {
+      return { ...base, garder: false, categorie: null, impact: "faible", raison: "pays sans effet direct sur les indices suivis" };
+    }
+    if (c.cle === "politique_eco" && COMMERCE.test(a.titre) && !ETATS_UNIS.test(a.titre)) {
+      return { ...base, garder: false, categorie: null, impact: "faible", raison: "politique commerciale sans les États-Unis" };
+    }
     // Variation chiffrée sous le seuil (« Dollar Index Falls 0.32% ») : pas significative.
     if (c.cle === "marche") {
       const pourcentages = [...a.titre.matchAll(/(\d+(?:[.,]\d+)?)\s?%/g)].map((m) => Number(m[1].replace(",", ".")));

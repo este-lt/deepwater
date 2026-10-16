@@ -11,7 +11,7 @@ import { appelerApiFred, lireSerieFred } from "../_shared/fred.ts";
 import { servirTacheProtegee } from "../_shared/garde.ts";
 import { attendre, json } from "../_shared/http.ts";
 import { executerTache } from "../_shared/journal.ts";
-import { derniereDatePrix, enregistrerPrix } from "../_shared/prix.ts";
+import { enregistrerPrix } from "../_shared/prix.ts";
 import { admin } from "../_shared/supabase.ts";
 
 const HISTORIQUE_ANS = 10;
@@ -39,10 +39,12 @@ async function lireTickers(): Promise<Ticker[]> {
   return (data ?? []) as Ticker[];
 }
 
-// Premier passage : 10 ans d'historique ; ensuite les 30 derniers jours (révisions comprises).
+// Historique incomplet (premier passage, ou seulement le cours du jour CoinGecko) :
+// 10 ans ; sinon les 30 derniers jours (révisions comprises).
 async function debutChargement(tickerId: string): Promise<string> {
-  const derniere = await derniereDatePrix(tickerId);
-  return derniere ? ilYa(RECHARGE_JOURS) : ilYa(HISTORIQUE_ANS * 366);
+  const { count, error } = await admin().from("prix_historique").select("id", { count: "exact", head: true }).eq("ticker_id", tickerId);
+  if (error) throw new Error(`Lecture de l'historique impossible : ${error.message}`);
+  return (count ?? 0) >= 200 ? ilYa(RECHARGE_JOURS) : ilYa(HISTORIQUE_ANS * 366);
 }
 
 const barre = (date: string, cloture: number) => ({ date, ouverture: null, plus_haut: null, plus_bas: null, cloture, volume: null });

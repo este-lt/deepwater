@@ -49,14 +49,6 @@ const dateCourte = (date: string) =>
 const moisAnnee = (date: string) =>
   new Intl.DateTimeFormat("fr-FR", { month: "short", year: "numeric", timeZone: "UTC" }).format(jourUtc(date));
 
-export function montantCourt(v: number): string {
-  const a = Math.abs(v);
-  if (a >= 1e9) return `${nf(a / 1e9, 2)} Md$`;
-  if (a >= 1e6) return `${nf(a / 1e6, 1)} M$`;
-  if (a >= 1e3) return `${nf(a / 1e3, 0)} k$`;
-  return `${nf(a, 0)} $`;
-}
-
 const indisponible = (cle: CleFacteur, libelle: string, poids: number, texte: string, source: string): Facteur => ({
   cle, libelle, statut: "indisponible", note: null, poids, contribution: null, texte, source, date: null,
 });
@@ -149,12 +141,23 @@ export function facteurMacro(indice: CleIndice, publications: PublicationMacro[]
     const def = r.indicateurs[p.indicateur];
     return def.sens * borner(p.variation! / def.ecartPlein);
   });
-  const parties = recentes.map((p) => {
-    const def = r.indicateurs[p.indicateur];
-    const valeur = p.valeur === null ? "—" : p.indicateur === "JOBLESS_CLAIMS" ? `${nf(p.valeur, 0)} k` : def.unite === "k" ? `${signe(p.valeur)}${nf(Math.abs(p.valeur), 0)} k` : `${nf(p.valeur, 1)} %`;
-    const periode = p.periode ? ` (${moisAnnee(p.periode)})` : "";
-    return `${def.libelle} ${valeur}${periode}, ${signe(p.variation!)}${nf(Math.abs(p.variation!), def.unite === "k" ? 0 : 1)} ${def.unite} vs la précédente`;
-  });
+  const periodeDe = (p: PublicationMacro) => {
+    if (!p.periode) return "";
+    if (p.indicateur === "JOBLESS_CLAIMS") return ` (semaine du ${dateCourte(p.periode)})`;
+    if (p.indicateur === "REAL_GDP") return ` (T${Math.floor((Number(p.periode.slice(5, 7)) - 1) / 3) + 1} ${p.periode.slice(0, 4)})`;
+    return ` (${moisAnnee(p.periode)})`;
+  };
+  // Seules les 3 publications qui pèsent le plus sont détaillées.
+  const parties = recentes
+    .map((p, i) => ({ p, poids: Math.abs(notes[i]) }))
+    .sort((a, b) => b.poids - a.poids)
+    .slice(0, 3)
+    .map(({ p }) => {
+      const def = r.indicateurs[p.indicateur];
+      const valeur = p.valeur === null ? "—" : p.indicateur === "JOBLESS_CLAIMS" ? `${nf(p.valeur, 0)} k` : def.unite === "k" ? `${signe(p.valeur)}${nf(Math.abs(p.valeur), 0)} k` : `${nf(p.valeur, 1)} %`;
+      return `${def.libelle} ${valeur}${periodeDe(p)}, ${signe(p.variation!)}${nf(Math.abs(p.variation!), def.unite === "k" ? 0 : 1)} ${def.unite} vs la précédente`;
+    });
+  if (recentes.length > 3) parties.push(`${recentes.length - 3} autres publications prises en compte`);
   return {
     cle: "macro",
     libelle: nom,

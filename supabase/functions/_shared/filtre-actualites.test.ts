@@ -49,6 +49,17 @@ Deno.test("rejetés : entreprises, politique locale, conditionnel, analyses, fai
   attendre("politique", cas("FT Europe", "Prime minister refuses to resign as protesters gather").garder, false);
   attendre("fait divers", cas("FT Europe", "Nineteen people injured in tunnel accident").garder, false);
   attendre("conseil personnel", cas("WSJ Marchés", "Your 'Cheap' ETF Costs More Than You Think").garder, false);
+  attendre("amende d'une banque", cas("WSJ Marchés", "Bank of America to Pay $1.2 Billion to Settle Violations of Money Laundering, Sanctions Laws").garder, false);
+  attendre("article de fond", cas("FT Marchés", "The once-obscure tech at the heart of the green energy trade war").garder, false);
+  attendre("article de fond 2", cas("WSJ Marchés", "The Riskiest Corner of the AI Trade Is Crashing Into Higher Rates").garder, false);
+  attendre("statistique d'un pays secondaire", cas("CNBC Économie", "India’s retail inflation jumps to 5.54% in September, above estimates").garder, false);
+  attendre("commerce sans les États-Unis", cas("FT Europe", "France and Germany to allow UK to join EU car policy if it aligns on China tariffs").garder, false);
+});
+
+Deno.test("gardés : déficit fédéral, commerce avec les États-Unis, Chine", () => {
+  attendre("déficit fédéral", cas("CNBC Économie", "U.S. budget deficit swells to almost $2 trillion for fiscal 2026, up 12% in a single year").garder, true);
+  attendre("commerce avec les États-Unis", cas("CNBC Économie", "China indicates rare earths will keep flowing to EU, regardless of U.S. trade deal expiration").garder, true);
+  attendre("Chine", cas("CNBC Économie", "China’s economy grew 4.8% in the third quarter").garder, true);
 });
 
 Deno.test("seuil de 2 % et mouvements ordinaires", () => {
