@@ -199,7 +199,9 @@ export type FondamentalesRow = {
   id: number;
   entreprise: string;
   date_cloture: string;
-  periode: "annuel" | "trimestriel";
+  periode: "annuel" | "trimestriel" | "instantane";
+  devise: string | null;
+  actions_en_circulation: number | null;
   chiffre_affaires: number | null;
   resultat_net: number | null;
   capitaux_propres: number | null;

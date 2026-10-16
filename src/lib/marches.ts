@@ -12,6 +12,8 @@ export interface ResumeInstrument {
 }
 
 const COLONNES_TICKER = "id, symbole, nom, classe_actif, source_principale, note_source, prioritaire";
+// Ordre d'affichage : S&P 500 puis Nasdaq-100, puis le reste par symbole.
+const ORDRE_AFFICHAGE = ["SPX", "NDX", "DJI", "EURUSD", "USDJPY", "GBPUSD", "USDCHF"];
 
 export async function lireResumes(
   supabase: ClientSupabase,
@@ -23,9 +25,14 @@ export async function lireResumes(
     : requete.eq("prioritaire", false).in("classe_actif", filtre.classes);
   const { data: tickers, error } = await requete.order("symbole");
   if (error) throw new Error(`Lecture des instruments impossible : ${error.message}`);
+  const ordre = (s: string) => {
+    const i = ORDRE_AFFICHAGE.indexOf(s);
+    return i === -1 ? ORDRE_AFFICHAGE.length : i;
+  };
+  const tries = [...(tickers ?? [])].sort((a, b) => ordre(a.symbole) - ordre(b.symbole));
 
   return Promise.all(
-    (tickers ?? []).map(async (ticker) => {
+    tries.map(async (ticker) => {
       const { data: prix, error: erreurPrix } = await supabase
         .from("prix_historique")
         .select("date, cloture, mm20, mm50, maj_le, source_donnee")

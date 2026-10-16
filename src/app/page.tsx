@@ -1,7 +1,9 @@
 import { Carte } from "@/components/carte";
+import { SectionFondamentales } from "@/components/fondamentales/section-fondamentales";
 import { Avertissement, EnTete } from "@/components/en-tete";
 import { CarteInstrument } from "@/components/marches/carte-instrument";
 import { GraphiquePrix } from "@/components/marches/graphique-prix";
+import { lireFiches } from "@/lib/fondamentales";
 import { lireResumes } from "@/lib/marches";
 import { assurerProfil } from "@/lib/profil";
 import { supabaseUtilisateur } from "@/lib/supabase";
@@ -24,9 +26,10 @@ export default async function TableauDeBord() {
   }
 
   const supabase = await supabaseUtilisateur();
-  const [indices, optionnels] = await Promise.all([
+  const [indices, optionnels, fiches] = await Promise.all([
     lireResumes(supabase, { prioritaires: true }),
     lireResumes(supabase, { classes: ["indice", "forex", "action"] }),
+    lireFiches(supabase),
   ]);
   const instrumentsGraphique = [...indices, ...optionnels].map((r) => ({ symbole: r.ticker.symbole, nom: r.ticker.nom }));
 
@@ -78,6 +81,8 @@ export default async function TableauDeBord() {
             </div>
           </details>
         )}
+
+        {fiches.length > 0 && <SectionFondamentales fiches={fiches} />}
 
         <Avertissement />
       </main>

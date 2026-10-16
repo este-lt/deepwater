@@ -51,21 +51,22 @@ export function GraphiquePrix({ instruments }: { instruments: { symbole: string;
   const graphique = useRef<IChartApi | null>(null);
   const [symbole, setSymbole] = useState(instruments[0]?.symbole ?? "");
   const [periode, setPeriode] = useState<(typeof PERIODES)[number]["cle"]>("1a");
-  const [serie, setSerie] = useState<Serie | null>(null);
-  const [etat, setEtat] = useState<"chargement" | "pret" | "erreur">("chargement");
+  // L'état d'affichage découle de la série demandée et de la dernière réponse reçue.
+  const demandee = `${symbole}|${periode}`;
+  const [reponse, setReponse] = useState<{ cle: string; serie: Serie | null; erreur: boolean } | null>(null);
+  const serie = reponse?.cle === demandee ? reponse.serie : null;
+  const etat = reponse?.cle !== demandee ? "chargement" : reponse.erreur ? "erreur" : "pret";
 
   // Chargement de la série (lecture en base via /api/series).
   useEffect(() => {
     if (!symbole) return;
+    const cle = `${symbole}|${periode}`;
     const controleur = new AbortController();
     fetch(`/api/series?symbole=${encodeURIComponent(symbole)}&periode=${periode}`, { signal: controleur.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((donnees: Serie) => {
-        setSerie(donnees);
-        setEtat("pret");
-      })
+      .then((donnees: Serie) => setReponse({ cle, serie: donnees, erreur: false }))
       .catch((e) => {
-        if (e.name !== "AbortError") setEtat("erreur");
+        if (e.name !== "AbortError") setReponse({ cle, serie: null, erreur: true });
       });
     return () => controleur.abort();
   }, [symbole, periode]);
@@ -145,10 +146,7 @@ export function GraphiquePrix({ instruments }: { instruments: { symbole: string;
               key={i.symbole}
               role="tab"
               aria-selected={symbole === i.symbole}
-              onClick={() => {
-                setEtat("chargement");
-                setSymbole(i.symbole);
-              }}
+              onClick={() => setSymbole(i.symbole)}
               className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
                 symbole === i.symbole ? "bg-surface-3 text-texte shadow-sm" : "text-attenue hover:text-texte"
               }`}
@@ -163,10 +161,7 @@ export function GraphiquePrix({ instruments }: { instruments: { symbole: string;
               key={p.cle}
               role="tab"
               aria-selected={periode === p.cle}
-              onClick={() => {
-                setEtat("chargement");
-                setPeriode(p.cle);
-              }}
+              onClick={() => setPeriode(p.cle)}
               className={`chiffres rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
                 periode === p.cle ? "bg-surface-3 text-texte" : "text-attenue hover:text-texte"
               }`}
