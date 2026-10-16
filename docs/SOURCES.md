@@ -1,196 +1,168 @@
 # Sources de données et limites réelles
 
-Deepwater n'affiche que des données collectées auprès des sources ci-dessous. Quand une
-donnée n'existe pas gratuitement, elle est marquée « indisponible » à l'écran, et le
-manque est expliqué ici. Rien n'est en temps réel : chaque bloc affiche l'heure de sa
-dernière mise à jour et passe en orange quand la donnée est plus ancienne que prévu.
+Deepwater n'affiche que des données collectées auprès des sources ci-dessous, toutes
+gratuites et officielles (sauf mention). Une donnée absente est marquée « indisponible ».
+Rien n'est en temps réel : clôtures quotidiennes officielles, sauf la crypto (cours du
+moment). Chaque ligne affiche sa date ; elle passe en orange quand elle est en retard.
 
-Heures : tout est stocké en UTC et affiché dans le fuseau du navigateur. Les heures
-officielles (annonce de la Fed à 14 h 00 à New York, de la BCE à 14 h 15 à Francfort)
-sont converties avec le changement d'heure de la ville concernée.
+Heures : stockées en UTC, affichées dans le fuseau du navigateur. Les heures officielles
+(Fed 14 h 00 à New York, BCE 14 h 15 à Francfort, statistiques américaines 8 h 30 à New
+York, séance de Wall Street 9 h 30-16 h) sont converties avec le changement d'heure de la
+ville concernée.
 
-## Indices S&P 500 et Nasdaq-100
+Aucune action individuelle n'est suivie : seulement les marchés dans leur ensemble.
 
-| | |
-|---|---|
-| Source | FRED (Federal Reserve Bank of St. Louis), séries `SP500` et `NASDAQ100`, export CSV |
-| Fréquence | toutes les 3 heures (`collecte-indices`) ; FRED publie la clôture du jour le lendemain ouvré |
-| Contenu | clôture quotidienne uniquement (pas d'ouverture, de plus haut ni de plus bas) |
-| Calculs | moyennes mobiles 20 et 50 jours calculées en SQL, vérifiées contre le CSV brut |
-| Contrainte | FRED refuse les navigateurs génériques : la requête s'identifie (`User-Agent` Deepwater) |
+## Univers suivi
 
-Alpha Vantage `INDEX_DATA` donnerait les mêmes indices mais c'est un endpoint payant.
-Le réglage `av_premium` (page admin) bascule automatiquement sur Alpha Vantage le jour
-où un abonnement est pris.
+Chaque utilisateur choisit les classes affichées (aucun réglage administrateur).
+
+| Classe | Instruments | Source | Fréquence |
+|---|---|---|---|
+| Indices actions | S&P 500, Nasdaq-100 (prioritaires), Dow Jones, Nikkei 225 | FRED (`SP500`, `NASDAQ100`, `DJIA`, `NIKKEI225`) | clôture quotidienne, publiée le lendemain matin |
+| Volatilité | VIX, VXN | FRED (`VIXCLS`, `VXNCLS`) | quotidienne |
+| Taux | 2, 10 et 30 ans, taux réel 10 ans, inflation anticipée 10 ans, taux Fed effectif ; courbe 3 mois-30 ans | FRED (`DGS*`, `DFII10`, `T10YIE`, `DFF`) | quotidienne |
+| Crédit | spreads haut rendement et catégorie investissement, conditions financières | FRED (`BAMLH0A0HYM2`, `BAMLC0A0CM`, `NFCI`) | quotidienne ; NFCI hebdomadaire. Spreads ICE BofA limités à 3 ans d'historique sur FRED |
+| Devises | EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, USD/CNY | BCE, cours de référence (`data-api.ecb.europa.eu`) | jours ouvrés, vers 16 h à Francfort ; paires contre le dollar déduites des cours en euros |
+| Devises | dollar, indice large de la Fed | FRED (`DTWEXBGS`) | publié chaque semaine, environ une semaine de décalage |
+| Matières premières | pétrole WTI et Brent, gaz naturel Henry Hub | FRED (`DCOILWTICO`, `DCOILBRENTEU`, `DHHNGSP`, données EIA) | quotidienne, 1 à 2 jours de décalage |
+| Matières premières | or, argent | Alpha Vantage `GOLD_SILVER_HISTORY` | quotidienne |
+| Crypto | bitcoin, ether | clôtures Coinbase sur FRED (`CBBTCUSD`, `CBETHUSD`) + cours du moment CoinGecko | quotidienne + toutes les 15 min |
+
+Historique : 10 ans au premier chargement, puis rechargement des 30 derniers jours à
+chaque passage (les révisions officielles sont reprises). Moyennes mobiles 20 et 50
+jours calculées en base.
+
+FRED exige un en-tête `User-Agent` identifiant (les navigateurs génériques sont bloqués).
+Une série en panne est journalisée et ignorée sans bloquer les autres.
 
 ## Alpha Vantage (offre gratuite)
 
-- **25 requêtes par jour** et au plus une par seconde. Le compteur est tenu en base
-  (`quota_api`), remis à zéro à minuit UTC.
-- Priorités : la priorité 1 (taux 2, 10 et 30 ans, taux directeur) peut utiliser les
-  25 appels ; la priorité 2 laisse toujours 3 appels en réserve ; la priorité 3 en laisse 8.
-- Collecteur unique (`collecte-av`, toutes les 15 min) : au plus 4 appels par passage,
-  15 s entre deux appels, verrou pour qu'une même donnée ne soit jamais demandée deux fois.
-  Les utilisateurs ne déclenchent jamais d'appel : ils lisent la base.
-- Les réponses « Note » ou « Information » (limite atteinte, endpoint payant, rafale)
-  ne sont jamais mises en cache. Seule la limite quotidienne bloque la source jusqu'à
-  minuit UTC ; une rafale est réessayée 15 min plus tard ; un endpoint payant est marqué
-  « indisponible » et réessayé une semaine plus tard.
-- Endpoints payants constatés : `INDEX_DATA`, `OVERVIEW`. Les ratios d'entreprise sont
-  donc calculés à partir des états financiers (douze derniers mois glissants).
+Utilisé seulement pour l'or et l'argent (2 appels par jour), et pour les indices si un
+abonnement payant est activé dans la page Admin (`INDEX_DATA` : ouverture, plus haut,
+plus bas). Quota gratuit : 25 requêtes par jour, une par seconde, compteur en base, cache,
+réponses « Note » ou « Information » jamais mises en cache. Endpoints payants constatés :
+`INDEX_DATA`, `OVERVIEW`.
 
-Données utilisées : taux du Trésor américain (3 mois à 30 ans), taux directeur de la Fed,
-CPI, chômage, emplois non agricoles, PIB réel, pétrole WTI et Brent, gaz naturel, cuivre,
-change (optionnel), actions AAPL et MSFT (optionnelles), actualités `NEWS_SENTIMENT`.
+## Sources écartées
 
-## SEC EDGAR
+| Source | Raison |
+|---|---|
+| Cours en séance (indices, devises, matières premières) | aucune source officielle gratuite ; l'API non officielle de Yahoo Finance fonctionne mais contrevient à ses conditions d'utilisation (écartée) |
+| Stooq | protégé par une vérification anti-robot |
+| Reuters, Bloomberg | plus de flux RSS public gratuit |
+| SEC EDGAR (initiés, 13F), fondamentales, actions | retirés : concernent des entreprises individuelles |
+| Indices européens (DAX, CAC, Stoxx) | non disponibles gratuitement sur FRED ; l'actualité européenne reste suivie |
+| Cuivre | uniquement mensuel en source gratuite : sans intérêt au quotidien |
 
-- `User-Agent` identifiant envoyé à chaque requête, 10 requêtes par seconde au maximum,
-  pause et nouvel essai sur les réponses 403 et 429.
-- Formulaires 4 (initiés) : différé légal de 2 jours ouvrés. Seuls les achats (code P)
-  et ventes (code S) sur le marché sont comptés ; attributions, exercices d'options et
-  retenues fiscales sont exclus.
-- Formulaires 13F (11 gérants suivis) : photographie en fin de trimestre, publiée jusqu'à
-  45 jours après. Les options (put/call) sont exclues.
-- Fondamentales : API XBRL `companyconcept`, exercices rapprochés à 7 jours près
-  (Apple clôt un samedi).
+## Macroéconomie américaine
 
-## Veille d'actualités
+Séries FRED, mêmes chiffres que les communiqués officiels :
 
-Flux RSS relus toutes les 30 minutes (`collecte-rss`) :
-
-| Source | Flux | Remarque |
+| Indicateur | Série | Affiché |
 |---|---|---|
-| WSJ Marchés | `feeds.content.dowjones.io/public/rss/RSSMarketsMain` | l'ancien flux `feeds.a.dj.com` est figé depuis janvier 2025 |
-| FT Marchés, FT Europe | `ft.com/markets?format=rss`, `ft.com/world/europe?format=rss` | le FT répond 403 aux navigateurs génériques, accepte un `User-Agent` honnête ; FT Europe est surtout politique, donc très filtré |
-| CNBC Marchés, CNBC Économie | flux `search.cnbc.com` 20409666 et 20910258 | |
-| Fed | `federalreserve.gov/feeds/press_monetary.xml` | seuls les communiqués du FOMC, procès-verbaux et projections sont gardés |
-| BCE | `ecb.europa.eu/rss/press.html` | seules les décisions et comptes rendus de politique monétaire sont gardés |
+| Inflation CPI | `CPIAUCNS` | sur 1 an |
+| CPI sous-jacent | `CPILFENS` | sur 1 an |
+| PCE sous-jacent (cible de la Fed) | `PCEPILFE` | sur 1 an |
+| Prix à la production | `PPIFID` | sur 1 an |
+| Taux de chômage | `UNRATE` | niveau |
+| Emplois créés | `PAYEMS` | variation mensuelle |
+| Inscriptions au chômage | `ICSA` | hebdomadaire |
+| Ventes au détail | `RSAFS` | sur 1 mois |
+| PIB réel | `GDPC1` | trimestre annualisé |
 
-S'y ajoutent deux requêtes Alpha Vantage `NEWS_SENTIMENT` toutes les 12 heures
-(thèmes marchés financiers et politique monétaire). Leur heure de publication est
-fournie sans fuseau ; elle est traitée comme UTC.
-
-Reuters et Bloomberg n'ont plus de flux RSS public gratuit : ils ne sont pas utilisés.
-
-**Stockage** : titre, lien, date, source et extrait de 280 caractères au plus. Le texte
-complet des articles n'est jamais récupéré. Un même titre repris par deux sources n'est
-stocké qu'une fois. Un flux en panne est journalisé et ignoré, sans bloquer les autres.
-
-**Filtre** (`supabase/functions/_shared/filtre-actualites.ts`, règles modifiables) :
-un article est gardé s'il relève d'une de ces catégories : décision de banque centrale,
-statistique macro publiée, mouvement de marché (toute séance pour les actions et indices,
-mouvements forts seulement pour taux, devises et matières premières, rien sous 2 %),
-résultats, fusion-acquisition, initiés et institutions. Sont rejetés : formulations au
-conditionnel, rumeurs, analyses et tribunes (titres en question, « pourquoi… »,
-« voici comment… »), conseils personnels, faits divers, culture, politique.
-
-**Validation** : 203 articles réels triés à la main avant d'exécuter le filtre, en trois
-lots. Avant ajustement, le filtre était d'accord avec le tri manuel sur 95,9 % (71/74) et
-93,3 % (42/45) des deux lots de contrôle. Après correction de règles générales (jamais
-d'exception par titre), il est d'accord sur 100 % des trois lots (84/84, 74/74, 45/45).
-Ces lots ayant servi à l'ajustement, le taux réel sur de nouveaux articles sera un peu
-plus bas. Les cas types sont repris dans les tests (`filtre-actualites.test.ts`).
-Les lots d'articles ne sont pas versionnés (droits des éditeurs).
+Les comparaisons se font par date : un mois jamais publié (octobre 2025, shutdown
+fédéral) rend la valeur « indisponible » au lieu d'un calcul faux sur 13 mois.
+Contrôle : PPI de septembre 2026 à +6,34 % sur 1 an (FRED), +6,3 % annoncé par le BLS.
 
 ## Calendrier économique
 
-- **Réunions de banques centrales** : dates officielles relevées le 16 octobre 2026 sur
-  federalreserve.gov et ecb.europa.eu. Les dates FOMC 2027 sont provisoires et signalées
-  comme telles jusqu'à confirmation par la Fed.
-- **Publications** (CPI, chômage, emplois non agricoles, PIB) : détectées quand une
-  nouvelle période apparaît dans la série Alpha Vantage. La date affichée est le jour de
-  détection, pas l'heure exacte de publication ; au tout premier chargement, la date de
-  publication est inconnue et l'écran le dit.
-- **Calculs** : CPI = variation sur 1 an de l'indice (même mois de l'année précédente),
-  emplois = variation mensuelle en milliers, PIB = croissance trimestrielle annualisée,
-  chômage = taux publié. Les comparaisons se font par date : **octobre 2025 n'a jamais
-  été publié** pour le CPI et le chômage (shutdown fédéral), donc toute valeur qui en
-  dépend (CPI d'octobre 2026 sur 1 an, écart du chômage de novembre 2025) est
-  « indisponible » au lieu d'être calculée sur un autre mois.
-- **Consensus des économistes : indisponible.** Aucune source gratuite fiable. L'écart
-  affiché compare chaque publication à la précédente, et c'est cette « surprise » que le
-  biais quotidien utilise.
-- **Dates des prochaines publications statistiques : indisponibles** (non collectées).
+- **Réunions Fed et BCE** : dates officielles relevées le 16/10/2026 sur
+  federalreserve.gov et ecb.europa.eu. Dates FOMC 2027 provisoires, signalées comme telles.
+- **Prochaines statistiques** (CPI, emploi, PCE, PIB, PPI, ventes au détail,
+  inscriptions au chômage) : API FRED (`release/dates`), **clé API gratuite requise**,
+  stockée dans le coffre Supabase (`fred_api_key`). Sans clé : « indisponible ».
+- **Dernières publications** : détectées quand une nouvelle période apparaît dans la
+  série FRED ; valeur, précédente et écart.
+- **Consensus des économistes : indisponible** (payant partout). L'écart affiché compare
+  chaque publication à la précédente ; c'est cette « surprise » que le biais utilise.
+
+## Actualités
+
+Flux RSS relus toutes les 30 minutes : WSJ Marchés (`feeds.content.dowjones.io`), FT
+Marchés et FT Europe (`User-Agent` honnête requis), CNBC Marchés et Économie, Fed
+(communiqués de politique monétaire), BCE (décisions). Stockage : titre, lien, date,
+source, extrait de 280 caractères au plus ; le texte complet n'est jamais récupéré.
+
+Filtre (`supabase/functions/_shared/filtre-actualites.ts`, règles modifiables) :
+
+- **Gardé** : décisions et messages des banques centrales ; statistiques macro publiées ;
+  mouvements du marché dans son ensemble (indices, taux, devises, matières premières,
+  crypto ; mouvements forts seulement hors actions ; rien sous 2 %) ; politique
+  économique qui touche les marchés (droits de douane impliquant les États-Unis,
+  shutdown, plafond de la dette, déficit fédéral, OPEP, sanctions).
+- **Rejeté** : tout ce qui concerne une entreprise (résultats, fusions, introductions en
+  Bourse, listes de valeurs, amendes, procès) ; politique locale (gouverneurs, États,
+  villes) ; statistiques de pays secondaires (hors États-Unis, Europe, Chine, Japon) ;
+  articles de fond et analyses ; conditionnel et rumeurs ; conseils personnels ; faits
+  divers.
+- **Validation** : une cinquantaine de cas en tests automatiques, titres réels des 14-16/10/2026 pour la plupart ; relecture à la
+  main des articles retenus le 16/10/2026 (15 gardés, tous des faits de marché). Après
+  toute modification des règles, le mode `reclasser` de `collecte-rss` repasse les
+  articles stockés au filtre.
 
 ## Biais quotidien (S&P 500, Nasdaq-100)
 
 Scoring automatique basé sur des règles, pas une prédiction garantie ni un conseil en
-investissement. Règles modifiables dans `supabase/functions/calcul-biais/regles.ts`.
+investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
-| Facteur | Donnée utilisée | Poids S&P 500 / Nasdaq-100 |
+| Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
 |---|---|---|
-| Tendance | clôture face aux moyennes mobiles 20 et 50 jours (FRED) | 35 % / 35 % |
-| Taux longs | taux à 10 ans : variation sur 5 séances et écart à sa moyenne d'un an | 25 % / 30 % |
-| Surprise macro | dernière publication (inflation, chômage, emplois, PIB) comparée à la précédente, si détectée dans les 45 derniers jours | 20 % / 15 % |
-| Flux | ventes et achats d'initiés déposés en 7 jours face à la moyenne des 13 semaines précédentes, et variation des 13F déposés en 7 jours | 20 % / 20 % |
+| Tendance | clôture face aux moyennes mobiles 20 et 50 jours | 35 % / 35 % |
+| Taux longs | 10 ans : variation sur 5 séances, écart à sa moyenne d'un an | 20 % / 25 % |
+| Surprise macro | publications des 45 derniers jours comparées aux précédentes | 15 % / 10 % |
+| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 30 % / 30 % |
 
-- Chaque facteur donne une note de −1 à +1 ; le score est leur moyenne pondérée,
-  converti en haussier (≥ +0,2), baissier (≤ −0,2) ou neutre. Les 2 ou 3 facteurs qui ont
-  le plus pesé sont affichés avec leurs chiffres et leurs sources.
-- Un facteur sans donnée récente est « indisponible » et son poids est retiré ; le biais
-  n'est pas publié sans le cours de l'indice ou avec moins de la moitié du poids total.
-- Le Nasdaq-100 ne compte que les flux des 10 grandes valeurs suivies qui en font partie.
-- Calcul unique pour tous les utilisateurs, à partir des données en base uniquement.
-  Automatisation coupée par défaut ; quand au moins un utilisateur l'active, le calcul
-  part à 8 h 30 heure de New York (deux créneaux UTC, un seul passe selon l'heure d'été).
-  Les jours fériés boursiers américains ne sont pas gérés.
-- Bouton de calcul manuel : un calcul toutes les 5 minutes par compte, 60 par heure au
-  total. Un recalcul sur des données inchangées ne crée pas de nouvelle version.
-- Chaque version reste en base (statut « remplace ») avec les validations qui s'y
-  rapportent ; chaque utilisateur ne voit que ses propres validations.
-
-## Données non disponibles
-
-| Donnée | Raison |
-|---|---|
-| Prix en temps réel | aucune source gratuite ; l'application n'affiche que des clôtures |
-| Indices européens | hors périmètre (choix du propriétaire) ; l'actualité européenne reste suivie |
-| Consensus des prévisions macro | payant partout |
-| Ratios Alpha Vantage `OVERVIEW` | endpoint payant ; ratios recalculés depuis les états financiers |
-| Ouverture, plus haut, plus bas des indices | FRED ne publie que la clôture |
+Note de −1 à +1 par facteur, moyenne pondérée, haussier ≥ +0,2, baissier ≤ −0,2.
+Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais sans le cours
+de l'indice ou avec moins de la moitié du poids. Calcul unique pour tous, depuis la base
+seulement ; automatique à 8 h 30 (New York) si un utilisateur l'active, sinon manuel
+(un calcul toutes les 5 minutes par compte). Jours fériés boursiers non gérés.
 
 ## Hébergement et exploitation
 
 ### Supabase (plan gratuit)
 
-- Supabase met en pause les projets gratuits qui montrent trop peu d'activité de base de
-  données sur 7 jours. Un e-mail d'avertissement arrive environ une semaine avant la pause,
-  puis un e-mail de confirmation. Un projet en pause se relance pendant 90 jours depuis le
-  tableau de bord (*Resume project*) ; au-delà, il n'est plus restaurable depuis Supabase.
-  Source : supabase.com/docs/guides/platform/free-project-pausing (consultée le 16/10/2026).
-- Ici, les tâches planifiées écrivent en base toutes les 10 à 30 minutes (collectes,
-  surveillance), ce qui devrait suffire à éviter la pause. En cas d'e-mail d'avertissement :
-  ouvrir le projet dans le tableau de bord Supabase. Seul le plan Pro supprime la pause.
-- Pas de sauvegarde téléchargeable sur le plan gratuit.
+- Pause des projets gratuits après 7 jours de faible activité : e-mail d'avertissement
+  environ une semaine avant, relance possible pendant 90 jours depuis le tableau de bord
+  (*Resume project*). Source : supabase.com/docs/guides/platform/free-project-pausing
+  (16/10/2026). Ici, les collectes écrivent en base toutes les 15 à 30 minutes. Seul le
+  plan Pro supprime la pause. Pas de sauvegarde téléchargeable sur le plan gratuit.
+- Fonction `collecte-sec` : n'est plus appelée (code supprimé, tâches planifiées
+  retirées) ; elle peut être supprimée dans le tableau de bord Supabase (*Edge Functions*).
 
 ### Railway
 
-- Le site Next.js tourne sur un seul service Railway (`web`). Consommation mesurée sur
-  24 h le 16/10/2026 : environ 0,12 Go de mémoire, processeur quasi nul.
-- Offre d'essai : crédit unique de 5 $. Plan Hobby : abonnement mensuel incluant 5 $
-  d'usage ; l'usage au-delà est facturé. Source : docs.railway.com/pricing (16/10/2026).
-  Vérifier le crédit restant dans Railway, rubrique *Usage*.
-- **Déploiement automatique non branché** : l'application GitHub de Railway n'est pas
-  installée sur le dépôt, donc un `git push` ne déclenche pas de déploiement. Pour
-  l'activer : Railway, service `web`, *Settings*, *Source*, reconnecter le dépôt
-  `este-lt/deepwater` et accepter l'installation de l'application Railway sur GitHub.
-  En attendant, chaque déploiement est relancé à la main (reconnexion de la source).
+- Un service `web` (Next.js). Consommation mesurée le 16/10/2026 : environ 0,12 Go de
+  mémoire, processeur quasi nul. Essai : crédit unique de 5 $ ; plan Hobby : abonnement
+  incluant 5 $ d'usage (docs.railway.com/pricing). Crédit restant : Railway, *Usage*.
+- **Déploiement automatique non branché** : un `git push` ne redéploie pas. Pour
+  l'activer : Railway, service `web`, *Settings*, *Source*, reconnecter `este-lt/deepwater`
+  et accepter l'application Railway sur GitHub.
 - Point de santé public : `/api/health` (base, dernière tâche réussie, version déployée).
 
 ### Alertes du conseiller de sécurité Supabase (volontaires)
 
 | Alerte | Raison |
 |---|---|
-| RLS sans politique sur `cache_api` et `appels_fonctions` | tables internes réservées au service role : aucune politique = aucun accès client, c'est voulu |
-| `sante()` exécutable sans connexion | alimente `/api/health` ; ne renvoie que l'état de la base, l'heure et la dernière tâche réussie |
-| `est_admin()`, `admin_etat_cron()`, `reserver_calcul_manuel()`, `derniere_reussite()` exécutables par un utilisateur connecté | nécessaires à l'interface ; `admin_etat_cron()` refuse tout non-admin, `reserver_calcul_manuel()` applique la limite de fréquence, `derniere_reussite()` ne renvoie qu'une heure |
+| RLS sans politique sur `cache_api` et `appels_fonctions` | tables internes, accès service role uniquement |
+| `sante()` exécutable sans connexion | alimente `/api/health`, aucune donnée sensible |
+| `est_admin()`, `admin_etat_cron()`, `reserver_calcul_manuel()`, `derniere_reussite()` exécutables par un utilisateur connecté | nécessaires à l'interface ; `admin_etat_cron()` refuse tout non-admin, `reserver_calcul_manuel()` applique la limite |
 
 ### Contrôles
 
 - Isolation RLS : `npm run test:comptes` puis `npm run test:rls -- <id d'un biais>`
-  (39 contrôles avec deux comptes de test, en base et via l'API).
+  (43 contrôles avec deux comptes de test).
 - Webhook Clerk signé et idempotent : `npm run test:webhook`.
-- Fuites de secrets : `npm run build` lance `scripts/verifier-secrets.mjs` (dépôt git,
-  variables `NEXT_PUBLIC_` et bundle navigateur).
-- Tests des Edge Functions : `npx deno test --allow-read supabase/functions`.
+- Fuites de secrets : `npm run build` lance `scripts/verifier-secrets.mjs`.
+- Edge Functions : `npx deno test --allow-read supabase/functions` (filtre, calendrier,
+  biais, Alpha Vantage).

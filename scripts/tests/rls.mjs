@@ -47,8 +47,9 @@ console.log("Validations de biais");
 r = await rest("/validations_biais", { jwt: a.jwt, methode: "POST", corps: { biais_id: BIAIS, decision: "valide", commentaire: "test A" }, prefer: R });
 verifier("A valide le biais de test", r.statut === 201 && r.donnees[0]?.clerk_user_id === a.id, r);
 const validationA = r.donnees?.[0]?.id;
-r = await rest("/validations_biais?select=id", { jwt: b.jwt });
-verifier("B ne voit pas la validation de A", r.statut === 200 && r.donnees.length === 0, r);
+// Les comptes de test peuvent garder des validations d'anciens passages : on cible le biais testé.
+r = await rest(`/validations_biais?select=id,clerk_user_id&biais_id=eq.${BIAIS}`, { jwt: b.jwt });
+verifier("B ne voit pas la validation de A", r.statut === 200 && r.donnees.every((v) => v.clerk_user_id === b.id), r);
 r = await rest(`/validations_biais?id=eq.${validationA}`, { jwt: b.jwt, methode: "PATCH", corps: { decision: "rejete" }, prefer: R });
 verifier("B ne modifie pas la validation de A (0 ligne)", r.statut === 200 && r.donnees.length === 0, r);
 r = await rest(`/validations_biais?id=eq.${validationA}`, { jwt: b.jwt, methode: "DELETE", prefer: R });
@@ -57,8 +58,10 @@ r = await rest("/validations_biais", { jwt: b.jwt, methode: "POST", corps: { bia
 verifier("B ne peut pas ecrire au nom de A", r.statut >= 400, r);
 r = await rest("/validations_biais", { jwt: b.jwt, methode: "POST", corps: { biais_id: BIAIS, decision: "rejete" }, prefer: R });
 verifier("B rejette le biais pour lui-meme", r.statut === 201, r);
-r = await rest("/validations_biais?select=decision,clerk_user_id", { jwt: a.jwt });
-verifier("A voit 1 seule validation, la sienne, intacte", r.statut === 200 && r.donnees.length === 1 && r.donnees[0].decision === "valide", r);
+r = await rest(`/validations_biais?select=decision,clerk_user_id&biais_id=eq.${BIAIS}`, { jwt: a.jwt });
+verifier("A voit 1 seule validation, la sienne, intacte", r.statut === 200 && r.donnees.length === 1 && r.donnees[0].clerk_user_id === a.id && r.donnees[0].decision === "valide", r);
+r = await rest("/validations_biais?select=clerk_user_id", { jwt: a.jwt });
+verifier("A ne voit aucune validation d'un autre compte", r.statut === 200 && r.donnees.every((v) => v.clerk_user_id === a.id), r);
 
 console.log("Donnees de marche partagees (lecture seule)");
 r = await rest("/tickers_suivis?select=symbole", { jwt: a.jwt });
@@ -91,6 +94,12 @@ r = await rest("/rpc/derniere_reussite", { jwt: a.jwt, methode: "POST", corps: {
 verifier("A lit la fraicheur d'une tache (heure seule)", r.statut === 200, r);
 r = await rest("/rpc/derniere_reussite", { methode: "POST", corps: { p_tache: "collecte-rss" } });
 verifier("Anonyme : fraicheur des taches refusee", r.statut >= 400, r);
+r = await rest(`/parametres_utilisateur?clerk_user_id=eq.${b.id}`, { jwt: a.jwt, methode: "PATCH", corps: { classes_affichees: ["crypto"] }, prefer: R });
+verifier("A ne change pas les classes affichees de B (0 ligne)", r.statut === 200 && r.donnees.length === 0, r);
+r = await rest("/rpc/resume_marches", { jwt: a.jwt, methode: "POST", corps: {} });
+verifier("A lit le moniteur multi-actifs", r.statut === 200 && r.donnees.length >= 20, r);
+r = await rest("/rpc/resume_marches", { methode: "POST", corps: {} });
+verifier("Anonyme : moniteur refuse", r.statut >= 400, r);
 
 console.log("Limitation du calcul manuel");
 r = await rest("/rpc/reserver_calcul_manuel", { jwt: a.jwt, methode: "POST", corps: {} });
@@ -113,6 +122,10 @@ payload.sub = b.id;
 const falsifie = [h, Buffer.from(JSON.stringify(payload)).toString("base64url"), s].join(".");
 r = await rest("/parametres_utilisateur?select=clerk_user_id", { jwt: falsifie });
 verifier("Jeton de A modifie pour usurper B : refuse", r.statut === 401, r);
+
+// Nettoyage : chaque compte supprime ses validations de test (droit accordé par la RLS).
+await rest(`/validations_biais?biais_id=eq.${BIAIS}`, { jwt: a.jwt, methode: "DELETE" });
+await rest(`/validations_biais?biais_id=eq.${BIAIS}`, { jwt: b.jwt, methode: "DELETE" });
 
 console.log(`\nResultat : ${ok} OK, ${ko} echec(s)`);
 process.exit(ko ? 1 : 0);

@@ -1,9 +1,10 @@
 # Deepwater
 
-Terminal de suivi de marché gratuit, centré sur le **S&P 500** et le **Nasdaq-100** :
-cours de clôture et moyennes mobiles, biais quotidien par règles, taux du Trésor,
-macroéconomie américaine, flux d'initiés et d'institutions (SEC), veille d'actualités
-filtrée et calendrier économique. Données publiques gratuites, différées, jamais en temps
+Terminal de marché gratuit centré sur le **S&P 500** et le **Nasdaq-100** : biais
+quotidien par règles, moniteur multi-actifs (indices, volatilité, taux, crédit, devises,
+matières premières, crypto ; classes choisies par chaque utilisateur), courbe des taux,
+macroéconomie américaine, actualités filtrées et calendrier économique. Aucune action
+individuelle. Données publiques gratuites, différées, jamais en temps
 réel. Les sources et leurs limites sont détaillées dans [docs/SOURCES.md](docs/SOURCES.md).
 
 ## Architecture
@@ -13,7 +14,7 @@ réel. Les sources et leurs limites sont détaillées dans [docs/SOURCES.md](doc
 | Next.js 16 (App Router, TypeScript strict, Tailwind) sur Railway | interface ; lit la base avec le jeton Clerk de l'utilisateur |
 | Clerk | connexion ; webhook signé et fonction de secours pour créer le profil |
 | Supabase Postgres + RLS | données de marché partagées en lecture, paramètres et validations par utilisateur |
-| Supabase Edge Functions (`supabase/functions`) | collectes (FRED, Alpha Vantage, SEC, RSS), calcul du biais |
+| Supabase Edge Functions (`supabase/functions`) | collectes (`collecte-marches` : FRED, BCE, CoinGecko ; `collecte-av` : or et argent ; `collecte-rss`), calcul du biais |
 | pg_cron + pg_net | planification ; chaque tâche écrit dans `logs_taches` (page Admin) |
 | Supabase Vault | secrets lus côté serveur uniquement |
 
@@ -38,7 +39,7 @@ Les migrations sont dans `supabase/migrations`, les fonctions dans `supabase/fun
 |---|---|
 | `npm run build` | compilation, puis recherche de fuites de secrets |
 | `npm run lint` | ESLint |
-| `npx deno test --allow-read supabase/functions` | tests des Edge Functions (filtre, SEC, Alpha Vantage, biais) |
+| `npx deno test --allow-read supabase/functions` | tests des Edge Functions (filtre, calendrier, Alpha Vantage, biais) |
 | `npm run test:comptes` | crée ou rafraîchit les deux comptes de test (Clerk) |
 | `npm run test:rls -- <id d'un biais>` | isolation RLS entre les deux comptes |
 | `npm run test:webhook` | signature et idempotence du webhook Clerk |
