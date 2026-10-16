@@ -23,7 +23,7 @@ function variation(v: number | null, type: LigneMarche["variation"]): { texte: s
 
 function Variation({ v, type, className = "" }: { v: number | null; type: LigneMarche["variation"]; className?: string }) {
   const { texte, ton } = variation(v, type);
-  return <td className={`chiffres px-2 py-2 text-right ${ton} ${className}`}>{texte}</td>;
+  return <td className={`chiffres whitespace-nowrap px-2 py-2 text-right ${ton} ${className}`}>{texte}</td>;
 }
 
 function dernier(l: LigneMarche): string {
@@ -80,19 +80,10 @@ export function Moniteur({ lignes, classes }: { lignes: LigneMarche[]; classes: 
       {groupes.length === 0 ? (
         <p className="rounded-xl bg-surface-2 p-4 text-sm text-attenue">Sélectionnez au moins une classe d&apos;actifs.</p>
       ) : (
-        <table className="w-full table-fixed text-sm">
-          <colgroup>
-            <col />
-            <col className="w-[6.5rem] sm:w-[7.5rem]" />
-            <col className="w-[5rem] sm:w-[5.5rem]" />
-            <col className="hidden w-[5.5rem] md:table-column" />
-            <col className="hidden w-[5.5rem] md:table-column" />
-            <col className="hidden w-[5.5rem] lg:table-column" />
-            <col className="hidden w-[7.5rem] lg:table-column" />
-          </colgroup>
+        <table className="w-full text-sm">
           <thead className="text-xs text-discret">
             <tr>
-              <th className="py-1.5 text-left font-medium">Instrument</th>
+              <th className="w-full py-1.5 text-left font-medium">Instrument</th>
               <th className="px-2 py-1.5 text-right font-medium">Dernier</th>
               <th className="px-2 py-1.5 text-right font-medium">Séance</th>
               <th className="hidden px-2 py-1.5 text-right font-medium md:table-cell">1 sem.</th>
@@ -115,14 +106,14 @@ export function Moniteur({ lignes, classes }: { lignes: LigneMarche[]; classes: 
                   title={`${l.noteSource ?? ""}${l.noteSource ? "\n" : ""}Source : ${libelleSource(l.source)} · cliquer pour le graphique`}
                   className="cursor-pointer rounded-lg transition-colors hover:bg-surface-2"
                 >
-                  <td className="truncate py-2 pr-2">
+                  <td className="max-w-0 truncate py-2 pr-2">
                     <span className="font-medium">{l.nom}</span>
                     <span className={`ml-1.5 text-[0.7rem] ${l.ancienne ? "text-alerte" : "text-discret"}`}>
                       {formaterDateSeance(l.date).replace(/ \d{4}$/, "")}
                       {l.source === "coingecko" && " · en direct"}
                     </span>
                   </td>
-                  <td className="chiffres px-2 py-2 text-right font-medium">{dernier(l)}</td>
+                  <td className="chiffres whitespace-nowrap px-2 py-2 text-right font-medium">{dernier(l)}</td>
                   <Variation v={l.var1j} type={l.variation} />
                   <Variation v={l.var1s} type={l.variation} className="hidden md:table-cell" />
                   <Variation v={l.var1m} type={l.variation} className="hidden md:table-cell" />

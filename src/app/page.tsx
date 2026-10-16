@@ -64,7 +64,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
       <main className="mx-auto flex max-w-[90rem] flex-col gap-5 px-4 py-5 sm:px-6">
         <Reperes evenements={evenements} />
 
-        <section aria-label="Indices prioritaires" className="grid gap-4 md:grid-cols-2">
+        <section aria-label="Indices prioritaires" className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {indices.map((l, i) => (
             <CarteInstrument key={l.symbole} ligne={l} delai={i * 60} />
           ))}
@@ -80,14 +80,14 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
           </Carte>
         </section>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
           <SectionVeille veille={veille} />
           <Repliable titre="Calendrier économique" resume="Décisions de taux et statistiques à venir">
             <SectionCalendrier calendrier={calendrier} />
           </Repliable>
         </div>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.65fr)]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.65fr)]">
           <Repliable titre="Courbe des taux" resume="Trésor américain, de 3 mois à 30 ans">
             <SectionTaux taux={taux} />
           </Repliable>

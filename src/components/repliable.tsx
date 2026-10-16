@@ -25,7 +25,7 @@ export function Repliable({ titre, resume, children }: { titre: string; resume?:
       onToggle={(e) => {
         if (petit) setOuvertParUtilisateur(e.currentTarget.open);
       }}
-      className="group/repliable"
+      className="group/repliable min-w-0"
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-carte border border-bordure bg-surface px-5 py-4 md:hidden [&::-webkit-details-marker]:hidden">
         <span className="min-w-0">
