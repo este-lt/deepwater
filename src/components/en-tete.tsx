@@ -9,7 +9,28 @@ export function EnTete({ estAdmin }: { estAdmin: boolean }) {
         <Link href="/" className="rounded-lg">
           <Logo />
         </Link>
+        <form action="/recherche" role="search" className="ml-auto hidden max-w-xs flex-1 md:block">
+          <label htmlFor="q-entete" className="sr-only">Recherche globale</label>
+          <input
+            id="q-entete"
+            name="q"
+            type="search"
+            maxLength={60}
+            placeholder="Rechercher un actif, une entreprise, un mot-clé…"
+            className="w-full rounded-lg border border-bordure bg-surface px-3 py-1.5 text-sm placeholder:text-discret focus:border-accent/60"
+          />
+        </form>
         <nav className="flex min-w-0 items-center gap-1 text-sm">
+          <Link
+            href="/recherche"
+            aria-label="Recherche globale"
+            className="rounded-lg px-2.5 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte md:hidden"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4" aria-hidden>
+              <circle cx="9" cy="9" r="6" />
+              <path d="m13.5 13.5 4 4" strokeLinecap="round" />
+            </svg>
+          </Link>
           <Link href="/" className="whitespace-nowrap rounded-lg px-2.5 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte sm:px-3">
             <span className="sm:hidden">Accueil</span>
             <span className="hidden sm:inline">Tableau de bord</span>

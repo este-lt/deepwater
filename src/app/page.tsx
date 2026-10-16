@@ -79,20 +79,8 @@ export default async function TableauDeBord() {
           </div>
         </section>
 
+        {/* Ordre du cahier des charges (étape 10), indices prioritaires en tête. */}
         <SectionBiais etat={biais} />
-        <SectionTaux taux={taux} matieres={matieres} />
-        <Repliable titre="Macroéconomie américaine" resume="Inflation, emploi, croissance, taux directeur">
-          <SectionMacro indicateurs={macro} />
-        </Repliable>
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-          <SectionVeille veille={veille} />
-          <Repliable titre="Calendrier économique" resume="Décisions de taux et statistiques publiées">
-            <SectionCalendrier calendrier={calendrier} />
-          </Repliable>
-        </div>
-        <Repliable titre="Initiés et institutions" resume="Formulaires 4 et 13F des grandes capitalisations">
-          <SectionFlux flux={flux} />
-        </Repliable>
 
         <details open className="group rounded-carte border border-bordure bg-surface animate-apparition">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 sm:px-6">
@@ -108,6 +96,23 @@ export default async function TableauDeBord() {
             <GraphiquePrix instruments={instrumentsGraphique} />
           </div>
         </details>
+
+        <SectionTaux taux={taux} matieres={matieres} />
+
+        <Repliable titre="Initiés et institutions" resume="Formulaires 4 et 13F des grandes capitalisations">
+          <SectionFlux flux={flux} />
+        </Repliable>
+
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+          <SectionVeille veille={veille} />
+          <Repliable titre="Calendrier économique" resume="Décisions de taux et statistiques publiées">
+            <SectionCalendrier calendrier={calendrier} />
+          </Repliable>
+        </div>
+
+        <Repliable titre="Macroéconomie américaine" resume="Inflation, emploi, croissance, taux directeur">
+          <SectionMacro indicateurs={macro} />
+        </Repliable>
 
         {optionnels.length > 0 && (
           <details className="group rounded-carte border border-bordure bg-surface animate-apparition">
@@ -129,6 +134,23 @@ export default async function TableauDeBord() {
         )}
 
         {fiches.length > 0 && <SectionFondamentales fiches={fiches} />}
+
+        <Carte titre="Recherche globale" sousTitre="Actif, entreprise, dirigeant, institution ou mot-clé, dans les données collectées">
+          <form action="/recherche" role="search" className="flex gap-2">
+            <label htmlFor="q-tableau" className="sr-only">Recherche globale</label>
+            <input
+              id="q-tableau"
+              name="q"
+              type="search"
+              maxLength={60}
+              placeholder="Ex. : NVDA, Berkshire, inflation, Fed…"
+              className="min-w-0 flex-1 rounded-xl border border-bordure bg-surface-2 px-4 py-2.5 text-sm placeholder:text-discret focus:border-accent/60"
+            />
+            <button type="submit" className="rounded-xl border border-accent/50 bg-accent-doux px-4 py-2.5 text-sm font-medium text-accent-clair hover:border-accent">
+              Rechercher
+            </button>
+          </form>
+        </Carte>
 
         <Avertissement />
       </main>

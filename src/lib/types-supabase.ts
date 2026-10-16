@@ -272,6 +272,23 @@ export type CollecteRow = {
   verrou_jusqu_a: string | null;
 }
 
+export type EntrepriseSuivieRow = {
+  symbole: string;
+  cik: string;
+  nom: string;
+  secteur: string;
+  cusip6: string;
+  mot_cle_13f: string;
+  indices: string[];
+  actif: boolean;
+}
+
+export type InstitutionSuivieRow = {
+  cik: string;
+  nom: string;
+  actif: boolean;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -295,6 +312,8 @@ export type Database = {
       taches_planifiees: Table<TachePlanifieeRow>;
       quota_api: Table<QuotaRow>;
       collectes_planifiees: Table<CollecteRow>;
+      entreprises_suivies_sec: Table<EntrepriseSuivieRow>;
+      institutions_suivies: Table<InstitutionSuivieRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
