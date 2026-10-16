@@ -1,5 +1,5 @@
 // deno test supabase/functions/_shared/alpha-vantage.test.ts
-import { aInterrogeAlphaVantage, classerMessage, extraireSerieQuotidienne } from "./alpha-vantage.ts";
+import { aInterrogeAlphaVantage, classerMessage, extraireSerieData, extraireSerieQuotidienne } from "./alpha-vantage.ts";
 
 function egal(reel: unknown, attendu: unknown, libelle: string) {
   if (JSON.stringify(reel) !== JSON.stringify(attendu)) {
@@ -67,4 +67,18 @@ Deno.test("série quotidienne FX : tri chronologique et conversion numérique", 
   });
   egal(barres.map((b) => b.date), ["2026-10-14", "2026-10-15"], "ordre");
   egal(barres[1], { date: "2026-10-15", ouverture: 1.16, plus_haut: 1.165, plus_bas: 1.158, cloture: 1.162, volume: null }, "barre");
+});
+
+Deno.test("série économique : valeurs « . » ignorées, tri chronologique, unité conservée", () => {
+  const r = extraireSerieData({
+    name: "10-Year Treasury Constant Maturity Rate",
+    unit: "percent",
+    data: [
+      { date: "2026-10-15", value: "4.05" },
+      { date: "2026-10-13", value: "." },
+      { date: "2026-10-14", value: "4.10" },
+    ],
+  });
+  egal(r.unite, "percent", "unité");
+  egal(r.points, [{ date: "2026-10-14", valeur: 4.1 }, { date: "2026-10-15", valeur: 4.05 }], "points");
 });

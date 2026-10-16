@@ -115,6 +115,19 @@ export interface BarreQuotidienne {
   volume: number | null;
 }
 
+// Séries économiques et matières premières : { name, unit, data: [{ date, value }] }.
+// Les valeurs "." (jour sans publication) sont ignorées, jamais remplacées.
+export function extraireSerieData(donnees: Record<string, unknown>): { unite: string | null; points: { date: string; valeur: number }[] } {
+  const brute = donnees["data"] as Array<{ date?: string; value?: string }> | undefined;
+  const points: { date: string; valeur: number }[] = [];
+  for (const p of brute ?? []) {
+    const valeur = nombre(p.value);
+    if (p.date && valeur !== null) points.push({ date: p.date.slice(0, 10), valeur });
+  }
+  points.sort((a, b) => a.date.localeCompare(b.date));
+  return { unite: typeof donnees["unit"] === "string" ? donnees["unit"] as string : null, points };
+}
+
 // Séries "Time Series ..." (FX_DAILY, TIME_SERIES_DAILY, INDEX_DATA).
 export function extraireSerieQuotidienne(donnees: Record<string, unknown>): BarreQuotidienne[] {
   const cleSerie = Object.keys(donnees).find((k) => k.startsWith("Time Series"));

@@ -3,7 +3,10 @@ import { SectionFondamentales } from "@/components/fondamentales/section-fondame
 import { Avertissement, EnTete } from "@/components/en-tete";
 import { CarteInstrument } from "@/components/marches/carte-instrument";
 import { GraphiquePrix } from "@/components/marches/graphique-prix";
+import { SectionMacro } from "@/components/macro/section-macro";
+import { SectionTaux } from "@/components/macro/section-taux";
 import { lireFiches } from "@/lib/fondamentales";
+import { lireMacro, lireMatieres, lireTaux } from "@/lib/macro";
 import { lireResumes } from "@/lib/marches";
 import { assurerProfil } from "@/lib/profil";
 import { supabaseUtilisateur } from "@/lib/supabase";
@@ -26,10 +29,13 @@ export default async function TableauDeBord() {
   }
 
   const supabase = await supabaseUtilisateur();
-  const [indices, optionnels, fiches] = await Promise.all([
+  const [indices, optionnels, fiches, taux, matieres, macro] = await Promise.all([
     lireResumes(supabase, { prioritaires: true }),
     lireResumes(supabase, { classes: ["indice", "forex", "action"] }),
     lireFiches(supabase),
+    lireTaux(supabase),
+    lireMatieres(supabase),
+    lireMacro(supabase),
   ]);
   const instrumentsGraphique = [...indices, ...optionnels].map((r) => ({ symbole: r.ticker.symbole, nom: r.ticker.nom }));
 
@@ -47,6 +53,9 @@ export default async function TableauDeBord() {
             ))}
           </div>
         </section>
+
+        <SectionTaux taux={taux} matieres={matieres} />
+        <SectionMacro indicateurs={macro} />
 
         <details open className="group rounded-carte border border-bordure bg-surface animate-apparition">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 sm:px-6">
