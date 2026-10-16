@@ -5,6 +5,17 @@ export function formaterNombre(valeur: number | null | undefined, decimales = 2)
   return new Intl.NumberFormat("fr-FR", { minimumFractionDigits: decimales, maximumFractionDigits: decimales }).format(valeur);
 }
 
+// Nombre compact signé : 12 345 678 -> "+12,3 M" (titres, effectifs).
+export function formaterNombreCourt(valeur: number | null | undefined): string {
+  if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return "—";
+  const abs = Math.abs(valeur);
+  const signe = valeur > 0 ? "+" : valeur < 0 ? "−" : "";
+  if (abs >= 1e9) return `${signe}${formaterNombre(abs / 1e9, 2)} Md`;
+  if (abs >= 1e6) return `${signe}${formaterNombre(abs / 1e6, 1)} M`;
+  if (abs >= 1e4) return `${signe}${formaterNombre(abs / 1e3, 0)} k`;
+  return `${signe}${formaterNombre(abs, 0)}`;
+}
+
 export function formaterPct(valeur: number | null | undefined, decimales = 2, signe = true): string {
   if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return "—";
   const texte = formaterNombre(Math.abs(valeur), decimales);

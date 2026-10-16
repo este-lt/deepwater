@@ -100,38 +100,25 @@ export function SectionCalendrier({ calendrier }: { calendrier: EtatCalendrier }
               Pas encore de publication détectée : inflation, chômage, emplois et PIB apparaîtront après leur prochaine collecte.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="chiffres w-full min-w-[22rem] text-right text-sm">
-                <thead className="text-xs text-attenue">
-                  <tr>
-                    <th className="pb-2 text-left font-medium">Indicateur</th>
-                    <th className="pb-2 font-medium">Publié</th>
-                    <th className="pb-2 font-medium">Précédent</th>
-                    <th className="pb-2 font-medium">Écart</th>
-                    <th className="pb-2 font-medium">Consensus</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-bordure">
-                  {calendrier.publications.map((p) => (
-                    <tr key={p.id}>
-                      <td className="py-2 text-left">
-                        <span className="block font-medium">{p.libelle}</span>
-                        <span className="block text-[0.7rem] text-discret">
-                          Période {formaterDateSeance(p.periode)} ·{" "}
-                          {p.dateInconnue ? "date de publication inconnue (premier chargement)" : `détectée le ${formaterDateSeance(p.detecteeLe)}`}
-                        </span>
-                      </td>
-                      <td className="py-2 font-medium">{valeur(p, p.valeur)}</td>
-                      <td className="py-2 text-attenue">{valeur(p, p.precedente)}</td>
-                      <td className="py-2 text-attenue">{ecart(p)}</td>
-                      <td className="py-2 text-xs text-discret" title="Prévisions des économistes non disponibles gratuitement">
-                        indisponible
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="flex flex-col gap-2">
+              {calendrier.publications.map((p) => (
+                <li key={p.id} className="rounded-xl bg-surface-2 px-3 py-2.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                    <span className="text-sm font-medium">{p.libelle}</span>
+                    <span className="chiffres text-lg font-semibold tracking-tight">{valeur(p, p.valeur)}</span>
+                  </div>
+                  <p className="chiffres mt-0.5 flex flex-wrap gap-x-3 text-xs text-attenue">
+                    <span>Précédent {valeur(p, p.precedente)}</span>
+                    <span>Écart {ecart(p)}</span>
+                    <span title="Prévisions des économistes non disponibles gratuitement">Consensus indisponible</span>
+                  </p>
+                  <p className="mt-0.5 text-[0.7rem] text-discret">
+                    Période {formaterDateSeance(p.periode)} ·{" "}
+                    {p.dateInconnue ? "date de publication inconnue (premier chargement)" : `détectée le ${formaterDateSeance(p.detecteeLe)}`}
+                  </p>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

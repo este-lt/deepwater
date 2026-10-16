@@ -1,6 +1,6 @@
 import { Carte, Pastille } from "@/components/carte";
 import { Horodatage } from "@/components/horodatage";
-import { formaterDateSeance, formaterNombre } from "@/lib/format";
+import { formaterDateSeance, formaterNombre, formaterNombreCourt } from "@/lib/format";
 import { formaterMontantCourt, type EtatFlux } from "@/lib/flux";
 
 const MENTION = "Données déclaratives et retardées légalement, pas temps réel.";
@@ -104,13 +104,19 @@ export function SectionFlux({ flux }: { flux: EtatFlux }) {
         ) : (
           <div className="flex flex-col gap-5">
             <div className="overflow-x-auto">
-              <table className="chiffres w-full min-w-[26rem] text-right text-sm">
+              <table className="chiffres w-full text-right text-xs sm:text-sm">
                 <thead className="text-xs text-attenue">
                   <tr>
                     <th className="pb-2 text-left font-medium">Entreprise</th>
                     <th className="pb-2 font-medium">Valeur détenue</th>
-                    <th className="pb-2 font-medium">Variation (titres)</th>
-                    <th className="pb-2 font-medium">Gérants ↗ / ↘</th>
+                    <th className="pb-2 font-medium">
+                      <span className="sm:hidden">Var. titres</span>
+                      <span className="hidden sm:inline">Variation (titres)</span>
+                    </th>
+                    <th className="pb-2 font-medium" title="Gérants qui renforcent / qui allègent">
+                      <span className="sm:hidden">↗ / ↘</span>
+                      <span className="hidden sm:inline">Gérants ↗ / ↘</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-bordure">
@@ -119,7 +125,16 @@ export function SectionFlux({ flux }: { flux: EtatFlux }) {
                       <td className="py-2 text-left font-medium" title={p.nom}>{p.entreprise}</td>
                       <td className="py-2">{formaterMontantCourt(p.valeur_usd)}</td>
                       <td className={`py-2 ${p.variation_parts === null ? "text-attenue" : p.variation_parts < 0 ? "text-baisse" : p.variation_parts > 0 ? "text-hausse" : ""}`}>
-                        {p.variation_parts === null ? "—" : `${p.variation_parts > 0 ? "+" : p.variation_parts < 0 ? "−" : ""}${formaterNombre(Math.abs(p.variation_parts), 0)}`}
+                        {p.variation_parts === null ? (
+                          "—"
+                        ) : (
+                          <>
+                            <span className="sm:hidden">{formaterNombreCourt(p.variation_parts)}</span>
+                            <span className="hidden sm:inline">
+                              {`${p.variation_parts > 0 ? "+" : p.variation_parts < 0 ? "−" : ""}${formaterNombre(Math.abs(p.variation_parts), 0)}`}
+                            </span>
+                          </>
+                        )}
                       </td>
                       <td className="py-2 text-attenue">
                         {p.nb_hausse} / {p.nb_baisse}

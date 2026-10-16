@@ -53,7 +53,7 @@ export function SectionBiais({ etat }: { etat: EtatBiais }) {
                 séances précédentes et de vos décisions
               </summary>
               <div className="mt-3 overflow-x-auto">
-                <table className="chiffres w-full min-w-[28rem] text-left text-sm">
+                <table className="chiffres w-full text-left text-xs sm:text-sm">
                   <thead className="text-xs text-attenue">
                     <tr>
                       <th className="pb-2 font-medium">Séance</th>
