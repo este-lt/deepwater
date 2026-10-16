@@ -42,3 +42,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 supabase/.temp/
+scripts/tests/comptes.json

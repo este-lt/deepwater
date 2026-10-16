@@ -4,9 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/verifier-secrets.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verifier:secrets": "node scripts/verifier-secrets.mjs",
+    "test:comptes": "node scripts/tests/creer-comptes-test.mjs",
+    "test:rls": "node scripts/tests/rls.mjs",
+    "test:webhook": "node scripts/tests/webhook-signature.mjs",
+    "test:secours": "node scripts/tests/profil-secours.mjs"
   },
   "dependencies": {
     "@clerk/localizations": "4.23.0",
