@@ -5,6 +5,7 @@ import { Avertissement, EnTete } from "@/components/en-tete";
 import { CarteInstrument } from "@/components/marches/carte-instrument";
 import { GraphiquePrix } from "@/components/marches/graphique-prix";
 import { Reperes } from "@/components/reperes";
+import { Repliable } from "@/components/repliable";
 import { SectionFlux } from "@/components/flux/section-flux";
 import { SectionMacro } from "@/components/macro/section-macro";
 import { SectionTaux } from "@/components/macro/section-taux";
@@ -80,12 +81,18 @@ export default async function TableauDeBord() {
 
         <SectionBiais etat={biais} />
         <SectionTaux taux={taux} matieres={matieres} />
-        <SectionMacro indicateurs={macro} />
+        <Repliable titre="Macroéconomie américaine" resume="Inflation, emploi, croissance, taux directeur">
+          <SectionMacro indicateurs={macro} />
+        </Repliable>
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
           <SectionVeille veille={veille} />
-          <SectionCalendrier calendrier={calendrier} />
+          <Repliable titre="Calendrier économique" resume="Décisions de taux et statistiques publiées">
+            <SectionCalendrier calendrier={calendrier} />
+          </Repliable>
         </div>
-        <SectionFlux flux={flux} />
+        <Repliable titre="Initiés et institutions" resume="Formulaires 4 et 13F des grandes capitalisations">
+          <SectionFlux flux={flux} />
+        </Repliable>
 
         <details open className="group rounded-carte border border-bordure bg-surface animate-apparition">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 sm:px-6">
