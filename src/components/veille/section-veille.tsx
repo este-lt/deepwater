@@ -1,7 +1,7 @@
 import { Carte, Pastille } from "@/components/carte";
 import { DateLocale, Echeance, Horodatage } from "@/components/horodatage";
 import { FilActualites } from "@/components/veille/fil-actualites";
-import { formaterDateSeance, formaterNombre } from "@/lib/format";
+import { formaterDateSeance, formaterNombre, formaterPeriode } from "@/lib/format";
 import type { EtatCalendrier, EtatVeille, Publication } from "@/lib/veille";
 
 export function SectionVeille({ veille }: { veille: EtatVeille }) {
@@ -113,7 +113,7 @@ export function SectionCalendrier({ calendrier }: { calendrier: EtatCalendrier }
                     <span title="Prévisions des économistes non disponibles gratuitement">Consensus indisponible</span>
                   </p>
                   <p className="mt-0.5 text-[0.7rem] text-discret">
-                    Période {formaterDateSeance(p.periode)} ·{" "}
+                    Période {formaterPeriode(p.periode, p.frequence)} ·{" "}
                     {p.dateInconnue ? "date de publication inconnue (premier chargement)" : `détectée le ${formaterDateSeance(p.detecteeLe)}`}
                   </p>
                 </li>

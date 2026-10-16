@@ -39,6 +39,24 @@ export function formaterDateSeance(date: string | null | undefined): string {
   );
 }
 
+export type Frequence = "jour" | "mois" | "trimestre";
+
+// Période d'une statistique datée au 1er du mois : "2026-09-01" -> "sept. 2026" (mensuelle),
+// "2026-04-01" -> "T2 2026" (trimestrielle) ; une série quotidienne garde son jour.
+export function formaterPeriode(date: string | null | undefined, frequence: Frequence): string {
+  if (!date) return "—";
+  if (frequence === "jour") return formaterDateSeance(date);
+  const [a, m] = date.split("-").map(Number);
+  if (frequence === "trimestre") return `T${Math.floor((m - 1) / 3) + 1} ${a}`;
+  return new Intl.DateTimeFormat("fr-FR", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(a, m - 1, 1)));
+}
+
+// "2026-09-01" moins 12 mois -> "2025-09-01" (séries mensuelles datées au 1er du mois).
+export function moisAvant(date: string, n: number): string {
+  const total = Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1 - n;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}${date.slice(7)}`;
+}
+
 export function tonVariation(valeur: number | null | undefined): "hausse" | "baisse" | "neutre" {
   if (!valeur) return "neutre";
   return valeur > 0 ? "hausse" : "baisse";

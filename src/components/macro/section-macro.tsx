@@ -1,6 +1,6 @@
 import { Carte } from "@/components/carte";
 import { Horodatage } from "@/components/horodatage";
-import { formaterDateSeance } from "@/lib/format";
+import { formaterPeriode } from "@/lib/format";
 import type { IndicateurAffiche } from "@/lib/macro";
 
 const FLECHES = { hausse: "↗", baisse: "↘", neutre: "→" } as const;
@@ -26,7 +26,12 @@ export function SectionMacro({ indicateurs }: { indicateurs: IndicateurAffiche[]
                   </span>
                 </span>
                 {i.detail && <span className="chiffres text-xs text-attenue">{i.detail}</span>}
-                <span className="text-[0.7rem] text-discret">Période : {formaterDateSeance(i.date)}</span>
+                <span className="text-[0.7rem] text-discret">Période : {formaterPeriode(i.date, i.frequence)}</span>
+              </>
+            ) : i.absence ? (
+              <>
+                <span className="text-sm text-discret">{i.absence}</span>
+                <span className="text-[0.7rem] text-discret">Période : {formaterPeriode(i.date, i.frequence)}</span>
               </>
             ) : (
               <span className="text-sm text-discret">Pas encore collecté</span>

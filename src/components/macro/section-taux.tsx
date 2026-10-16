@@ -1,7 +1,7 @@
 import { Carte, Pastille } from "@/components/carte";
 import { Horodatage } from "@/components/horodatage";
 import { MiniCourbe } from "@/components/marches/mini-courbe";
-import { formaterDateSeance, formaterNombre, formaterPct, tonVariation } from "@/lib/format";
+import { formaterDateSeance, formaterNombre, formaterPct, formaterPeriode, tonVariation } from "@/lib/format";
 import { MATIERES, type EtatTaux } from "@/lib/macro";
 import type { MatiereRow } from "@/lib/types-supabase";
 
@@ -113,11 +113,13 @@ export function SectionTaux({ taux, matieres }: { taux: EtatTaux; matieres: (Mat
                     </span>
                     <span className="chiffres flex flex-wrap gap-x-3 text-xs">
                       <span className={tonVariation(ligne.variation_1j) === "hausse" ? "text-hausse" : tonVariation(ligne.variation_1j) === "baisse" ? "text-baisse" : "text-attenue"}>
-                        {formaterPct(ligne.variation_1j === null ? null : Number(ligne.variation_1j))} / séance
+                        {formaterPct(ligne.variation_1j === null ? null : Number(ligne.variation_1j))} / {m.frequence === "mois" ? "1 mois" : "séance"}
                       </span>
                       <span className="text-attenue">{formaterPct(ligne.variation_1an === null ? null : Number(ligne.variation_1an))} / 1 an</span>
                     </span>
-                    <span className="text-[0.7rem] text-discret">au {formaterDateSeance(ligne.date)}</span>
+                    <span className="text-[0.7rem] text-discret">
+                      {m.frequence === "mois" ? `moyenne de ${formaterPeriode(ligne.date, "mois")}` : `au ${formaterDateSeance(ligne.date)}`}
+                    </span>
                   </>
                 ) : (
                   <span className="text-sm text-discret">Pas encore collecté</span>

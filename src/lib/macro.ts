@@ -1,4 +1,5 @@
 import "server-only";
+import { type Frequence, moisAvant } from "./format";
 import type { ClientSupabase } from "./supabase";
 import type { MacroRow, MatiereRow, TauxRow } from "./types-supabase";
 
@@ -66,11 +67,12 @@ export async function lireTaux(supabase: ClientSupabase): Promise<EtatTaux> {
   };
 }
 
-export const MATIERES: { nom: string; libelle: string; unite: string }[] = [
-  { nom: "WTI", libelle: "Pétrole WTI", unite: "$/baril" },
-  { nom: "BRENT", libelle: "Pétrole Brent", unite: "$/baril" },
-  { nom: "NATURAL_GAS", libelle: "Gaz naturel", unite: "$/MMBtu" },
-  { nom: "COPPER", libelle: "Cuivre", unite: "$/tonne" },
+// Le cuivre n'existe qu'en moyenne mensuelle (FMI) : sa première variation est sur un mois.
+export const MATIERES: { nom: string; libelle: string; unite: string; frequence: Frequence }[] = [
+  { nom: "WTI", libelle: "Pétrole WTI", unite: "$/baril", frequence: "jour" },
+  { nom: "BRENT", libelle: "Pétrole Brent", unite: "$/baril", frequence: "jour" },
+  { nom: "NATURAL_GAS", libelle: "Gaz naturel", unite: "$/MMBtu", frequence: "jour" },
+  { nom: "COPPER", libelle: "Cuivre", unite: "$/tonne", frequence: "mois" },
 ];
 
 export async function lireMatieres(supabase: ClientSupabase): Promise<(MatiereRow | null)[]> {
@@ -95,7 +97,10 @@ export interface IndicateurAffiche {
   valeur: string | null;
   detail: string | null;
   date: string | null;
+  frequence: Frequence;
   majLe: string | null;
+  // Raison affichée quand la valeur ne peut pas être calculée à partir des données collectées.
+  absence: string | null;
   tendance: "hausse" | "baisse" | "neutre";
   // Pour un indicateur, "hausse" n'est pas forcément une bonne nouvelle : simple sens de variation.
 }
@@ -107,6 +112,18 @@ function ecrire(v: number, decimales: number): string {
 const sens = (delta: number | null): "hausse" | "baisse" | "neutre" =>
   delta === null || Math.abs(delta) < 1e-9 ? "neutre" : delta > 0 ? "hausse" : "baisse";
 
+// Valeur publiée `n` mois avant `date` ; null si ce mois n'a jamais été publié
+// (octobre 2025 pour le CPI et le chômage, shutdown fédéral) : jamais le mois voisin.
+function lecture(serie: { date: string; valeur: number }[]) {
+  const parDate = new Map(serie.map((l) => [l.date, l.valeur]));
+  return (date: string, n: number) => parDate.get(moisAvant(date, n)) ?? null;
+}
+
+const ecart = (a: number | null, b: number | null) => (a !== null && b !== null ? a - b : null);
+const croissance = (a: number | null, b: number | null, puissance: number) =>
+  a !== null && b !== null && b !== 0 ? ((a / b) ** puissance - 1) * 100 : null;
+const signe = (v: number) => (v >= 0 ? "+" : "−");
+
 export async function lireMacro(supabase: ClientSupabase): Promise<IndicateurAffiche[]> {
   const series = await Promise.all(
     ["FEDERAL_FUNDS_RATE", "CPI", "UNEMPLOYMENT", "NONFARM_PAYROLL", "REAL_GDP"].map(async (indicateur) => {
@@ -115,14 +132,14 @@ export async function lireMacro(supabase: ClientSupabase): Promise<IndicateurAff
         .select("*")
         .eq("indicateur", indicateur)
         .order("date", { ascending: false })
-        .limit(14);
+        .limit(40);
       if (error) throw new Error(`Lecture de ${indicateur} impossible : ${error.message}`);
       return ((data ?? []) as MacroRow[]).map((l) => ({ ...l, valeur: Number(l.valeur) }));
     }),
   );
   const [fed, cpi, chomage, nfp, pib] = series;
-  const vide = (cle: string, libelle: string): IndicateurAffiche => ({
-    cle, libelle, valeur: null, detail: null, date: null, majLe: null, tendance: "neutre",
+  const vide = (cle: string, libelle: string, frequence: Frequence): IndicateurAffiche => ({
+    cle, libelle, valeur: null, detail: null, date: null, frequence, majLe: null, absence: null, tendance: "neutre",
   });
 
   const resultat: IndicateurAffiche[] = [];
@@ -133,49 +150,67 @@ export async function lireMacro(supabase: ClientSupabase): Promise<IndicateurAff
     resultat.push({
       cle: "FEDERAL_FUNDS_RATE", libelle: "Taux Fed (effectif)", valeur: `${ecrire(fed[0].valeur, 2)} %`,
       detail: ilYaUnMois ? `${ecrire(ilYaUnMois.valeur, 2)} % il y a un mois` : null,
-      date: fed[0].date, majLe: fed[0].maj_le, tendance: sens(ilYaUnMois ? fed[0].valeur - ilYaUnMois.valeur : null),
+      date: fed[0].date, frequence: "jour", majLe: fed[0].maj_le, absence: null,
+      tendance: sens(ilYaUnMois ? fed[0].valeur - ilYaUnMois.valeur : null),
     });
-  } else resultat.push(vide("FEDERAL_FUNDS_RATE", "Taux Fed (effectif)"));
+  } else resultat.push(vide("FEDERAL_FUNDS_RATE", "Taux Fed (effectif)", "jour"));
 
-  if (cpi.length >= 13) {
-    const glissement = (cpi[0].valeur / cpi[12].valeur - 1) * 100;
-    const precedent = cpi.length >= 14 ? (cpi[1].valeur / cpi[13].valeur - 1) * 100 : null;
+  if (cpi.length) {
+    const v = lecture(cpi);
+    const d = cpi[0].date;
+    const glissement = croissance(v(d, 0), v(d, 12), 1);
+    const precedent = croissance(v(d, 1), v(d, 13), 1);
     resultat.push({
-      cle: "CPI", libelle: "Inflation (CPI, sur 1 an)", valeur: `${ecrire(glissement, 1)} %`,
+      cle: "CPI", libelle: "Inflation (CPI, sur 1 an)", valeur: glissement === null ? null : `${ecrire(glissement, 1)} %`,
       detail: precedent === null ? null : `${ecrire(precedent, 1)} % le mois précédent`,
-      date: cpi[0].date, majLe: cpi[0].maj_le, tendance: sens(precedent === null ? null : glissement - precedent),
+      date: d, frequence: "mois", majLe: cpi[0].maj_le,
+      absence: glissement === null ? "Indisponible : l'indice du même mois de l'an dernier n'a pas été publié" : null,
+      tendance: sens(ecart(glissement, precedent)),
     });
-  } else resultat.push(vide("CPI", "Inflation (CPI, sur 1 an)"));
+  } else resultat.push(vide("CPI", "Inflation (CPI, sur 1 an)", "mois"));
 
   if (chomage.length) {
+    const v = lecture(chomage);
+    const d = chomage[0].date;
+    const precedent = v(d, 1);
     resultat.push({
       cle: "UNEMPLOYMENT", libelle: "Taux de chômage", valeur: `${ecrire(chomage[0].valeur, 1)} %`,
-      detail: chomage[1] ? `${ecrire(chomage[1].valeur, 1)} % le mois précédent` : null,
-      date: chomage[0].date, majLe: chomage[0].maj_le, tendance: sens(chomage[1] ? chomage[0].valeur - chomage[1].valeur : null),
+      detail: precedent === null ? null : `${ecrire(precedent, 1)} % le mois précédent`,
+      date: d, frequence: "mois", majLe: chomage[0].maj_le, absence: null,
+      tendance: sens(ecart(chomage[0].valeur, precedent)),
     });
-  } else resultat.push(vide("UNEMPLOYMENT", "Taux de chômage"));
+  } else resultat.push(vide("UNEMPLOYMENT", "Taux de chômage", "mois"));
 
-  if (nfp.length >= 3) {
+  if (nfp.length) {
     // Niveau total en milliers : la création d'emplois du mois est la différence.
-    const creation = nfp[0].valeur - nfp[1].valeur;
-    const precedente = nfp[1].valeur - nfp[2].valeur;
+    const v = lecture(nfp);
+    const d = nfp[0].date;
+    const creation = ecart(v(d, 0), v(d, 1));
+    const precedente = ecart(v(d, 1), v(d, 2));
     resultat.push({
-      cle: "NONFARM_PAYROLL", libelle: "Emplois créés (NFP)", valeur: `${creation >= 0 ? "+" : "−"}${ecrire(Math.abs(creation), 0)} k`,
-      detail: `${precedente >= 0 ? "+" : "−"}${ecrire(Math.abs(precedente), 0)} k le mois précédent`,
-      date: nfp[0].date, majLe: nfp[0].maj_le, tendance: sens(creation - precedente),
+      cle: "NONFARM_PAYROLL", libelle: "Emplois créés (NFP)",
+      valeur: creation === null ? null : `${signe(creation)}${ecrire(Math.abs(creation), 0)} k`,
+      detail: precedente === null ? null : `${signe(precedente)}${ecrire(Math.abs(precedente), 0)} k le mois précédent`,
+      date: d, frequence: "mois", majLe: nfp[0].maj_le,
+      absence: creation === null ? "Indisponible : le niveau du mois précédent n'a pas été publié" : null,
+      tendance: sens(ecart(creation, precedente)),
     });
-  } else resultat.push(vide("NONFARM_PAYROLL", "Emplois créés (NFP)"));
+  } else resultat.push(vide("NONFARM_PAYROLL", "Emplois créés (NFP)", "mois"));
 
-  if (pib.length >= 3) {
+  if (pib.length) {
     // Croissance trimestrielle annualisée, comme publiée par le BEA.
-    const croissance = ((pib[0].valeur / pib[1].valeur) ** 4 - 1) * 100;
-    const precedente = ((pib[1].valeur / pib[2].valeur) ** 4 - 1) * 100;
+    const v = lecture(pib);
+    const d = pib[0].date;
+    const actuelle = croissance(v(d, 0), v(d, 3), 4);
+    const precedente = croissance(v(d, 3), v(d, 6), 4);
     resultat.push({
-      cle: "REAL_GDP", libelle: "Croissance du PIB (annualisée)", valeur: `${ecrire(croissance, 1)} %`,
-      detail: `${ecrire(precedente, 1)} % le trimestre précédent`,
-      date: pib[0].date, majLe: pib[0].maj_le, tendance: sens(croissance - precedente),
+      cle: "REAL_GDP", libelle: "Croissance du PIB (annualisée)", valeur: actuelle === null ? null : `${ecrire(actuelle, 1)} %`,
+      detail: precedente === null ? null : `${ecrire(precedente, 1)} % le trimestre précédent`,
+      date: d, frequence: "trimestre", majLe: pib[0].maj_le,
+      absence: actuelle === null ? "Indisponible : le trimestre précédent n'a pas été publié" : null,
+      tendance: sens(ecart(actuelle, precedente)),
     });
-  } else resultat.push(vide("REAL_GDP", "Croissance du PIB (annualisée)"));
+  } else resultat.push(vide("REAL_GDP", "Croissance du PIB (annualisée)", "trimestre"));
 
   return resultat;
 }

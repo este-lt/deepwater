@@ -1,5 +1,5 @@
 import "server-only";
-import { instantFuseau } from "./format";
+import { type Frequence, instantFuseau } from "./format";
 import type { ClientSupabase } from "./supabase";
 import type { ArticleRow, CalendrierRow } from "./types-supabase";
 
@@ -51,11 +51,11 @@ export interface Reunion {
 type Unite = "pct" | "milliers";
 
 // Indicateurs publiés détectés par le collecteur (voir supabase/functions/_shared/calendrier.ts).
-export const PUBLICATIONS: Record<string, { libelle: string; unite: Unite }> = {
-  CPI: { libelle: "Inflation (CPI, sur 1 an)", unite: "pct" },
-  UNEMPLOYMENT: { libelle: "Taux de chômage", unite: "pct" },
-  NONFARM_PAYROLL: { libelle: "Emplois non agricoles (variation mensuelle)", unite: "milliers" },
-  REAL_GDP: { libelle: "PIB réel (trimestre annualisé)", unite: "pct" },
+export const PUBLICATIONS: Record<string, { libelle: string; unite: Unite; frequence: Frequence }> = {
+  CPI: { libelle: "Inflation (CPI, sur 1 an)", unite: "pct", frequence: "mois" },
+  UNEMPLOYMENT: { libelle: "Taux de chômage", unite: "pct", frequence: "mois" },
+  NONFARM_PAYROLL: { libelle: "Emplois non agricoles (variation mensuelle)", unite: "milliers", frequence: "mois" },
+  REAL_GDP: { libelle: "PIB réel (trimestre annualisé)", unite: "pct", frequence: "trimestre" },
 };
 
 export interface Publication {
@@ -63,6 +63,7 @@ export interface Publication {
   indicateur: string;
   libelle: string;
   unite: Unite;
+  frequence: Frequence;
   periode: string | null;
   detecteeLe: string;
   // Premier chargement : la date réelle de publication n'est pas connue.
@@ -131,6 +132,7 @@ export async function lireCalendrier(supabase: ClientSupabase): Promise<EtatCale
       indicateur: cle,
       libelle: def.libelle,
       unite: def.unite,
+      frequence: def.frequence,
       periode: l.date_reference,
       detecteeLe: l.date_evenement,
       dateInconnue: l.date_estimee,
