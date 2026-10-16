@@ -83,6 +83,14 @@ r = await rest("/rpc/lire_secret", { jwt: a.jwt, methode: "POST", corps: { p_nom
 verifier("Lecture d'un secret Vault refusee", r.statut >= 400, r);
 r = await rest("/rpc/est_admin", { jwt: a.jwt, methode: "POST", corps: {} });
 verifier("est_admin = false pour A", r.statut === 200 && r.donnees === false, r);
+r = await rest("/rpc/remplacer_biais", { jwt: a.jwt, methode: "POST", corps: { p_biais: { biais: "haussier" } } });
+verifier("A ne peut pas publier un biais (remplacer_biais)", r.statut >= 400, r);
+r = await rest("/rpc/declencher_biais_auto", { jwt: a.jwt, methode: "POST", corps: {} });
+verifier("A ne peut pas declencher le calcul automatique", r.statut >= 400, r);
+r = await rest("/rpc/derniere_reussite", { jwt: a.jwt, methode: "POST", corps: { p_tache: "collecte-rss" } });
+verifier("A lit la fraicheur d'une tache (heure seule)", r.statut === 200, r);
+r = await rest("/rpc/derniere_reussite", { methode: "POST", corps: { p_tache: "collecte-rss" } });
+verifier("Anonyme : fraicheur des taches refusee", r.statut >= 400, r);
 
 console.log("Limitation du calcul manuel");
 r = await rest("/rpc/reserver_calcul_manuel", { jwt: a.jwt, methode: "POST", corps: {} });

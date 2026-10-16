@@ -90,11 +90,15 @@ export default async function PageAdmin() {
                         <Pastille ton={tonStatut(dernier?.statut)}>{dernier?.statut ?? "jamais exécutée"}</Pastille>
                       </td>
                       <td className="py-2.5">
-                        <Horodatage
-                          iso={derniereReussite.get(t.nom_tache)}
-                          source="logs_taches"
-                          seuilHeures={intervalleEnHeures(t.delai_alerte)}
-                        />
+                        {t.actif ? (
+                          <Horodatage
+                            iso={derniereReussite.get(t.nom_tache)}
+                            source="logs_taches"
+                            seuilHeures={intervalleEnHeures(t.delai_alerte)}
+                          />
+                        ) : (
+                          <span className="text-xs text-discret">En pause (aucun utilisateur ne l&apos;a activée), pas d&apos;alerte de retard</span>
+                        )}
                       </td>
                     </tr>
                   );

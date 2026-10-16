@@ -1,3 +1,4 @@
+import { SectionBiais } from "@/components/biais/section-biais";
 import { Carte } from "@/components/carte";
 import { SectionFondamentales } from "@/components/fondamentales/section-fondamentales";
 import { Avertissement, EnTete } from "@/components/en-tete";
@@ -7,6 +8,7 @@ import { SectionFlux } from "@/components/flux/section-flux";
 import { SectionMacro } from "@/components/macro/section-macro";
 import { SectionTaux } from "@/components/macro/section-taux";
 import { SectionCalendrier, SectionVeille } from "@/components/veille/section-veille";
+import { lireBiais } from "@/lib/biais";
 import { lireFlux } from "@/lib/flux";
 import { lireFiches } from "@/lib/fondamentales";
 import { lireMacro, lireMatieres, lireTaux } from "@/lib/macro";
@@ -33,7 +35,7 @@ export default async function TableauDeBord() {
   }
 
   const supabase = await supabaseUtilisateur();
-  const [indices, optionnels, fiches, taux, matieres, macro, flux, veille, calendrier] = await Promise.all([
+  const [indices, optionnels, fiches, taux, matieres, macro, flux, veille, calendrier, biais] = await Promise.all([
     lireResumes(supabase, { prioritaires: true }),
     lireResumes(supabase, { classes: ["indice", "forex", "action"] }),
     lireFiches(supabase),
@@ -43,6 +45,7 @@ export default async function TableauDeBord() {
     lireFlux(supabase),
     lireVeille(supabase),
     lireCalendrier(supabase),
+    lireBiais(supabase),
   ]);
   const instrumentsGraphique = [...indices, ...optionnels].map((r) => ({ symbole: r.ticker.symbole, nom: r.ticker.nom }));
 
@@ -61,6 +64,7 @@ export default async function TableauDeBord() {
           </div>
         </section>
 
+        <SectionBiais etat={biais} />
         <SectionTaux taux={taux} matieres={matieres} />
         <SectionMacro indicateurs={macro} />
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">

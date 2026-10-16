@@ -31,6 +31,7 @@
   --animate-apparition: apparition 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-validation: validation 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   --animate-chargement: chargement 1.6s ease-in-out infinite;
+  --animate-remplir: remplir 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 
   @keyframes apparition {
     from {
@@ -53,6 +54,12 @@
     100% {
       transform: scale(1);
       box-shadow: 0 0 0 14px rgb(124 108 255 / 0);
+    }
+  }
+  /* Barre de progression douce (jauge du biais) : à combiner avec origin-left/right. */
+  @keyframes remplir {
+    from {
+      transform: scaleX(0);
     }
   }
   @keyframes chargement {
