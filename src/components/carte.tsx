@@ -25,7 +25,7 @@ export function Carte({ titre, sousTitre, actions, pied, children, className = "
             {titre && <h2 className="text-[0.95rem] font-semibold tracking-tight">{titre}</h2>}
             {sousTitre && <p className="mt-0.5 text-sm text-attenue">{sousTitre}</p>}
           </div>
-          {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+          {actions && <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
       {children}

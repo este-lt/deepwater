@@ -24,8 +24,8 @@ export function CommandesBiais({ autoActif }: { autoActif: boolean }) {
     });
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <div className="flex flex-wrap items-center justify-end gap-3">
+    <div className="flex max-w-full flex-col items-start gap-1.5 sm:items-end">
+      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
         <button
           type="button"
           role="switch"
@@ -52,7 +52,7 @@ export function CommandesBiais({ autoActif }: { autoActif: boolean }) {
         </button>
       </div>
       {retour && (
-        <p role="status" className={`text-right text-xs ${retour.ok ? "text-attenue" : "text-alerte"}`}>
+        <p role="status" className={`text-xs sm:text-right ${retour.ok ? "text-attenue" : "text-alerte"}`}>
           {retour.message}
           {retour.reessayerApres && (
             <>

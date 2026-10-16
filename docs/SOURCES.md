@@ -107,6 +107,33 @@ Les lots d'articles ne sont pas versionnés (droits des éditeurs).
   biais quotidien utilise.
 - **Dates des prochaines publications statistiques : indisponibles** (non collectées).
 
+## Biais quotidien (S&P 500, Nasdaq-100)
+
+Scoring automatique basé sur des règles, pas une prédiction garantie ni un conseil en
+investissement. Règles modifiables dans `supabase/functions/calcul-biais/regles.ts`.
+
+| Facteur | Donnée utilisée | Poids S&P 500 / Nasdaq-100 |
+|---|---|---|
+| Tendance | clôture face aux moyennes mobiles 20 et 50 jours (FRED) | 35 % / 35 % |
+| Taux longs | taux à 10 ans : variation sur 5 séances et écart à sa moyenne d'un an | 25 % / 30 % |
+| Surprise macro | dernière publication (inflation, chômage, emplois, PIB) comparée à la précédente, si détectée dans les 45 derniers jours | 20 % / 15 % |
+| Flux | ventes et achats d'initiés déposés en 7 jours face à la moyenne des 13 semaines précédentes, et variation des 13F déposés en 7 jours | 20 % / 20 % |
+
+- Chaque facteur donne une note de −1 à +1 ; le score est leur moyenne pondérée,
+  converti en haussier (≥ +0,2), baissier (≤ −0,2) ou neutre. Les 2 ou 3 facteurs qui ont
+  le plus pesé sont affichés avec leurs chiffres et leurs sources.
+- Un facteur sans donnée récente est « indisponible » et son poids est retiré ; le biais
+  n'est pas publié sans le cours de l'indice ou avec moins de la moitié du poids total.
+- Le Nasdaq-100 ne compte que les flux des 10 grandes valeurs suivies qui en font partie.
+- Calcul unique pour tous les utilisateurs, à partir des données en base uniquement.
+  Automatisation coupée par défaut ; quand au moins un utilisateur l'active, le calcul
+  part à 8 h 30 heure de New York (deux créneaux UTC, un seul passe selon l'heure d'été).
+  Les jours fériés boursiers américains ne sont pas gérés.
+- Bouton de calcul manuel : un calcul toutes les 5 minutes par compte, 60 par heure au
+  total. Un recalcul sur des données inchangées ne crée pas de nouvelle version.
+- Chaque version reste en base (statut « remplace ») avec les validations qui s'y
+  rapportent ; chaque utilisateur ne voit que ses propres validations.
+
 ## Données non disponibles
 
 | Donnée | Raison |
