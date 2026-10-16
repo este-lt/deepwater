@@ -1,3 +1,4 @@
+import { SectionMarches } from "@/components/admin/section-marches";
 import { Carte, Pastille } from "@/components/carte";
 import { EnTete } from "@/components/en-tete";
 import { DateLocale, Horodatage } from "@/components/horodatage";
@@ -26,11 +27,14 @@ export default async function PageAdmin() {
   await exigerAdmin();
   const supabase = await supabaseUtilisateur();
 
-  const [taches, logs, cron, quota] = await Promise.all([
+  const [taches, logs, cron, quota, tickers, collectes, premium] = await Promise.all([
     supabase.from("taches_planifiees").select("*").order("nom_tache"),
     supabase.from("logs_taches").select("*").order("demarre_le", { ascending: false }).limit(60),
     supabase.rpc("admin_etat_cron"),
     supabase.from("quota_api").select("*").order("jour", { ascending: false }).limit(7),
+    supabase.from("tickers_suivis").select("*").order("prioritaire", { ascending: false }).order("symbole"),
+    supabase.from("collectes_planifiees").select("*"),
+    supabase.from("config_app").select("valeur").eq("cle", "av_premium").maybeSingle(),
   ]);
 
   const journaux = (logs.data ?? []) as LogTacheRow[];
@@ -54,6 +58,12 @@ export default async function PageAdmin() {
             d&apos;alerte est signalée.
           </p>
         </div>
+
+        <SectionMarches
+          tickers={tickers.data ?? []}
+          collectes={collectes.data ?? []}
+          premium={premium.data?.valeur === true}
+        />
 
         <Carte titre="Tâches programmées" sousTitre="pg_cron → Edge Functions">
           <div className="overflow-x-auto">
