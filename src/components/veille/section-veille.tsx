@@ -7,20 +7,12 @@ import type { EtatCalendrier, EtatVeille, Publication } from "@/lib/veille";
 export function SectionVeille({ veille }: { veille: EtatVeille }) {
   return (
     <Carte
-      titre="Veille de marché filtrée"
-      sousTitre="Seuls les faits pouvant faire bouger les marchés suivis : banques centrales, statistiques, mouvements, résultats, fusions."
+      titre="Actualités"
       actions={<Pastille ton="neutre">{veille.fenetreJours} derniers jours</Pastille>}
-      pied={
-        <div className="flex flex-col gap-1">
-          <p className="text-xs text-attenue">
-            Titre, lien et court extrait uniquement : l&apos;article complet reste chez l&apos;éditeur. Flux relus toutes les 30 minutes, pas en temps réel.
-          </p>
-          <Horodatage iso={veille.verifieLe} source="WSJ, FT, CNBC, Fed, BCE, Alpha Vantage" seuilHeures={2} />
-        </div>
-      }
+      pied={<Horodatage iso={veille.verifieLe} source="WSJ, FT, CNBC, Fed, BCE (titre et court extrait, relus toutes les 30 min)" seuilHeures={2} />}
     >
       {veille.articles.length === 0 ? (
-        <p className="text-sm text-attenue">Aucun article retenu par le filtre sur la période.</p>
+        <p className="text-sm text-attenue">Aucune actualité de marché retenue sur la période.</p>
       ) : (
         <FilActualites articles={veille.articles} fenetreJours={veille.fenetreJours} />
       )}
@@ -28,94 +20,93 @@ export function SectionVeille({ veille }: { veille: EtatVeille }) {
   );
 }
 
-const pct = (v: number | null) => (v === null ? "—" : `${formaterNombre(v, 1)} %`);
+const nombre = (p: Publication, v: number | null) => {
+  if (v === null) return "—";
+  const signe = p.signe ? (v > 0 ? "+" : v < 0 ? "−" : "") : v < 0 ? "−" : "";
+  return p.unite === "pct" ? `${signe}${formaterNombre(Math.abs(v), 1)} %` : `${signe}${formaterNombre(Math.abs(v), 0)} k`;
+};
 const ecart = (p: Publication) => {
   if (p.variation === null) return "—";
   const signe = p.variation > 0 ? "+" : p.variation < 0 ? "−" : "";
-  return p.unite === "milliers"
-    ? `${signe}${formaterNombre(Math.abs(p.variation), 0)} k`
-    : `${signe}${formaterNombre(Math.abs(p.variation), 1)} pt`;
-};
-const valeur = (p: Publication, v: number | null) => {
-  if (p.unite === "pct") return pct(v);
-  if (v === null) return "—";
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${formaterNombre(Math.abs(v), 0)} k`;
+  return p.unite === "milliers" ? `${signe}${formaterNombre(Math.abs(p.variation), 0)} k` : `${signe}${formaterNombre(Math.abs(p.variation), 1)} pt`;
 };
 
+const FORMAT_JOUR = { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" } as const;
+
 export function SectionCalendrier({ calendrier }: { calendrier: EtatCalendrier }) {
+  // Agenda unique : réunions de banques centrales et publications à venir, par ordre chronologique.
+  const agenda = [
+    ...calendrier.reunions.map((r) => ({
+      cle: `r${r.id}`, badge: r.banque, libelle: r.provisoire ? `Décision de taux (date provisoire)` : "Décision de taux",
+      instant: r.annonceUtc, fort: true,
+    })),
+    ...calendrier.prevues.map((p) => ({ cle: `p${p.id}`, badge: "US", libelle: p.libelle, instant: p.annonceUtc, fort: p.impact === "fort" })),
+  ].sort((a, b) => a.instant.localeCompare(b.instant)).slice(0, 8);
+
   return (
     <Carte
       titre="Calendrier économique"
-      sousTitre="Prochaines décisions de taux et dernières statistiques américaines publiées"
+      sousTitre="Heures dans votre fuseau"
       pied={
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-attenue">
-            Le consensus des économistes n&apos;est pas disponible gratuitement : l&apos;écart affiché compare chaque publication à la précédente.
+          <p className="text-xs text-discret">
+            Consensus des économistes indisponible gratuitement : l&apos;écart compare chaque publication à la précédente.
           </p>
-          <p className="text-xs text-discret">Dates des réunions : federalreserve.gov et ecb.europa.eu, relevées le 16 oct. 2026.</p>
-          <Horodatage iso={calendrier.majLe} source="statistiques Alpha Vantage (BLS, BEA)" seuilHeures={24 * 40} />
+          <Horodatage iso={calendrier.majLe} source="FRED (BLS, BEA), federalreserve.gov, ecb.europa.eu" seuilHeures={24 * 10} />
         </div>
       }
     >
       <div className="flex flex-col gap-5">
         <div>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">
-            Prochaines réunions <span className="normal-case tracking-normal">· heures dans votre fuseau</span>
-          </h3>
-          {calendrier.reunions.length === 0 ? (
-            <p className="text-sm text-attenue">Aucune date de réunion à venir enregistrée.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {calendrier.reunions.map((r) => (
-                <li key={r.id} className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5">
-                  <span
-                    className={`grid size-9 shrink-0 place-items-center rounded-lg text-xs font-semibold ${
-                      r.banque === "Fed" ? "bg-accent-doux text-accent-clair" : "bg-neutre-doux text-texte"
-                    }`}
-                  >
-                    {r.banque}
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">À venir</h3>
+          <ul className="flex flex-col gap-1.5">
+            {agenda.map((e) => (
+              <li key={e.cle} className="flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2">
+                <span
+                  className={`grid h-7 w-10 shrink-0 place-items-center rounded-md text-[0.7rem] font-semibold ${
+                    e.badge === "Fed" ? "bg-accent-doux text-accent-clair" : e.badge === "BCE" ? "bg-neutre-doux text-texte" : "bg-surface-3 text-attenue"
+                  }`}
+                >
+                  {e.badge}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-sm ${e.fort ? "font-medium" : ""}`}>{e.libelle}</span>
+                  <span className="block text-xs text-attenue">
+                    <DateLocale iso={e.instant} options={FORMAT_JOUR} />
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-baseline gap-x-1.5 text-sm font-medium">
-                      {formaterDateSeance(r.date)}
-                      {r.provisoire && <span className="text-xs font-normal text-alerte">date provisoire</span>}
-                    </p>
-                    <p className="text-xs text-attenue">
-                      Annonce à <DateLocale iso={r.annonceUtc} options={{ hour: "2-digit", minute: "2-digit" }} />
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-xs font-medium">
-                    <Echeance iso={r.annonceUtc} />
-                  </span>
-                </li>
-              ))}
-            </ul>
+                </span>
+                <span className="shrink-0 text-xs font-medium">
+                  <Echeance iso={e.instant} />
+                </span>
+              </li>
+            ))}
+          </ul>
+          {calendrier.prevues.length === 0 && (
+            <p className="mt-2 text-xs text-discret">Dates des prochaines statistiques indisponibles : clé API FRED à configurer.</p>
           )}
         </div>
 
         <div>
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">Dernières publications</h3>
           {calendrier.publications.length === 0 ? (
-            <p className="text-sm text-attenue">
-              Pas encore de publication détectée : inflation, chômage, emplois et PIB apparaîtront après leur prochaine collecte.
-            </p>
+            <p className="text-sm text-attenue">Pas encore de publication collectée.</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col divide-y divide-bordure">
               {calendrier.publications.map((p) => (
-                <li key={p.id} className="rounded-xl bg-surface-2 px-3 py-2.5">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                    <span className="text-sm font-medium">{p.libelle}</span>
-                    <span className="chiffres text-lg font-semibold tracking-tight">{valeur(p, p.valeur)}</span>
-                  </div>
-                  <p className="chiffres mt-0.5 flex flex-wrap gap-x-3 text-xs text-attenue">
-                    <span>Précédent {valeur(p, p.precedente)}</span>
-                    <span>Écart {ecart(p)}</span>
-                    <span title="Prévisions des économistes non disponibles gratuitement">Consensus indisponible</span>
-                  </p>
-                  <p className="mt-0.5 text-[0.7rem] text-discret">
-                    Période {formaterPeriode(p.periode, p.frequence)} ·{" "}
-                    {p.dateInconnue ? "date de publication inconnue (premier chargement)" : `détectée le ${formaterDateSeance(p.detecteeLe)}`}
-                  </p>
+                <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
+                  <span className="min-w-0">
+                    <span className="block text-sm">{p.libelle}</span>
+                    <span className="block text-[0.7rem] text-discret">
+                      {formaterPeriode(p.periode, p.frequence)}
+                      {!p.dateInconnue && ` · publié le ${formaterDateSeance(p.detecteeLe)}`}
+                    </span>
+                  </span>
+                  <span className="chiffres text-right">
+                    <span className="block text-sm font-semibold">{nombre(p, p.valeur)}</span>
+                    <span className="block text-[0.7rem] text-attenue">
+                      préc. {nombre(p, p.precedente)} · {ecart(p)}
+                    </span>
+                  </span>
                 </li>
               ))}
             </ul>

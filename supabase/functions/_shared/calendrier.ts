@@ -1,8 +1,7 @@
-// Calendrier économique dérivé des séries Alpha Vantage : quand une nouvelle
-// période apparaît (nouvelle publication officielle), un événement est créé avec
-// la valeur publiée, la précédente et l'écart. Le consensus des économistes n'est
-// pas disponible gratuitement : la « surprise » est mesurée par rapport à la
-// publication précédente (choix documenté dans docs/SOURCES.md).
+// Calendrier économique dérivé des séries FRED : quand une nouvelle période apparaît
+// (nouvelle publication officielle), un événement est créé avec la valeur publiée, la
+// précédente et l'écart. Le consensus des économistes n'est pas disponible gratuitement :
+// la « surprise » est mesurée par rapport à la publication précédente (docs/SOURCES.md).
 import { admin } from "./supabase.ts";
 
 interface Point {
@@ -10,47 +9,48 @@ interface Point {
   valeur: number;
 }
 
-// Valeur de la série `n` mois avant la période étudiée ; null si ce mois manque.
-type Lecture = (moisAvant: number) => number | null;
+// Valeur de la série `n` périodes avant la période étudiée ; null si cette période manque.
+type Lecture = (periodesAvant: number) => number | null;
 
-interface DefinitionPublication {
+export interface DefinitionPublication {
+  serie: string; // identifiant FRED
   libelle: string;
   impact: "fort" | "moyen";
-  // Écart en mois entre deux publications (1 = mensuelle, 3 = trimestrielle).
-  pas: number;
-  // Valeur "titre" de la publication.
+  // Écart entre deux publications : en mois (1, 3) ou "hebdo" (observation précédente).
+  pas: number | "hebdo";
   titre: (v: Lecture) => number | null;
 }
 
 const ecart = (a: number | null, b: number | null) => (a !== null && b !== null ? a - b : null);
 const rapport = (a: number | null, b: number | null) => (a !== null && b !== null && b !== 0 ? a / b : null);
+const surUnAn = (v: Lecture) => {
+  const r = rapport(v(0), v(12));
+  return r === null ? null : (r - 1) * 100;
+};
 
-const PUBLICATIONS: Record<string, DefinitionPublication> = {
-  CPI: {
-    libelle: "Inflation américaine (CPI, sur 1 an, %)",
-    impact: "fort",
-    pas: 1,
+export const PUBLICATIONS: Record<string, DefinitionPublication> = {
+  CPI: { serie: "CPIAUCNS", libelle: "Inflation américaine (CPI, sur 1 an, %)", impact: "fort", pas: 1, titre: surUnAn },
+  CORE_CPI: { serie: "CPILFENS", libelle: "Inflation sous-jacente (CPI hors énergie et alimentation, sur 1 an, %)", impact: "fort", pas: 1, titre: surUnAn },
+  CORE_PCE: { serie: "PCEPILFE", libelle: "Inflation PCE sous-jacente (cible de la Fed, sur 1 an, %)", impact: "fort", pas: 1, titre: surUnAn },
+  PPI: { serie: "PPIFID", libelle: "Prix à la production (demande finale, sur 1 an, %)", impact: "moyen", pas: 1, titre: surUnAn },
+  UNEMPLOYMENT: { serie: "UNRATE", libelle: "Taux de chômage américain (%)", impact: "fort", pas: 1, titre: (v) => v(0) },
+  NONFARM_PAYROLL: {
+    serie: "PAYEMS", libelle: "Emplois non agricoles créés (milliers)", impact: "fort", pas: 1,
+    titre: (v) => ecart(v(0), v(1)),
+  },
+  JOBLESS_CLAIMS: {
+    serie: "ICSA", libelle: "Inscriptions hebdomadaires au chômage (milliers)", impact: "moyen", pas: "hebdo",
+    titre: (v) => (v(0) === null ? null : v(0)! / 1000),
+  },
+  RETAIL_SALES: {
+    serie: "RSAFS", libelle: "Ventes au détail (sur 1 mois, %)", impact: "moyen", pas: 1,
     titre: (v) => {
-      const r = rapport(v(0), v(12));
+      const r = rapport(v(0), v(1));
       return r === null ? null : (r - 1) * 100;
     },
   },
-  UNEMPLOYMENT: {
-    libelle: "Taux de chômage américain (%)",
-    impact: "fort",
-    pas: 1,
-    titre: (v) => v(0),
-  },
-  NONFARM_PAYROLL: {
-    libelle: "Emplois non agricoles créés (milliers)",
-    impact: "fort",
-    pas: 1,
-    titre: (v) => ecart(v(0), v(1)),
-  },
   REAL_GDP: {
-    libelle: "Croissance du PIB américain (annualisée, %)",
-    impact: "fort",
-    pas: 3,
+    serie: "GDPC1", libelle: "Croissance du PIB américain (annualisée, %)", impact: "fort", pas: 3,
     titre: (v) => {
       const r = rapport(v(0), v(3));
       return r === null ? null : (r ** 4 - 1) * 100;
@@ -60,7 +60,7 @@ const PUBLICATIONS: Record<string, DefinitionPublication> = {
 
 const arrondi = (v: number | null) => (v === null ? null : Math.round(v * 1000) / 1000);
 
-// "2026-09-01" moins 12 mois -> "2025-09-01" (les séries sont datées au 1er du mois).
+// "2026-09-01" moins 12 mois -> "2025-09-01" (les séries mensuelles sont datées au 1er du mois).
 export function moisAvant(date: string, n: number): string {
   const total = Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1 - n;
   return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}${date.slice(7)}`;
@@ -74,11 +74,21 @@ export function calculerPublication(
 ): { date: string; valeur: number | null; precedente: number | null; variation: number | null } | null {
   const def = PUBLICATIONS[indicateur];
   if (!def || serie.length === 0) return null;
-  const parDate = new Map(serie.map((p) => [p.date, p.valeur]));
-  const lecture = (date: string): Lecture => (n) => parDate.get(moisAvant(date, n)) ?? null;
   const date = serie[serie.length - 1].date;
-  const valeur = arrondi(def.titre(lecture(date)));
-  const precedente = arrondi(def.titre(lecture(moisAvant(date, def.pas))));
+  let valeur: number | null;
+  let precedente: number | null;
+  if (def.pas === "hebdo") {
+    // Série hebdomadaire : la publication précédente est l'observation d'avant.
+    const lire = (i: number): Lecture => (n) => serie[i - n]?.valeur ?? null;
+    valeur = arrondi(def.titre(lire(serie.length - 1)));
+    precedente = arrondi(def.titre(lire(serie.length - 2)));
+  } else {
+    const pas = def.pas;
+    const parDate = new Map(serie.map((p) => [p.date, p.valeur]));
+    const lecture = (d: string): Lecture => (n) => parDate.get(moisAvant(d, n)) ?? null;
+    valeur = arrondi(def.titre(lecture(date)));
+    precedente = arrondi(def.titre(lecture(moisAvant(date, pas))));
+  }
   return { date, valeur, precedente, variation: arrondi(ecart(valeur, precedente)) };
 }
 
@@ -106,10 +116,10 @@ export async function enregistrerPublication(
       variation: calcul.variation,
       consensus: null,
       impact: def.impact,
-      source_donnee: `alpha_vantage:${indicateur}`,
+      source_donnee: `fred:${def.serie}`,
       maj_le: new Date().toISOString(),
     },
-    { onConflict: "indicateur,date_evenement" },
+    { onConflict: "indicateur,type_evenement,date_evenement" },
   );
   if (error) throw new Error(`Écriture du calendrier impossible : ${error.message}`);
   return true;

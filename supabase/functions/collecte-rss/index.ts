@@ -7,6 +7,7 @@ import { servirTacheProtegee } from "../_shared/garde.ts";
 import { json } from "../_shared/http.ts";
 import { executerTache } from "../_shared/journal.ts";
 import { analyserRss, extraitCourt, urlCanonique } from "../_shared/rss.ts";
+import { admin } from "../_shared/supabase.ts";
 
 export const FLUX: Record<string, string> = {
   "WSJ Marchés": "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
@@ -20,7 +21,37 @@ export const FLUX: Record<string, string> = {
 
 const FRAICHEUR_JOURS = 7;
 
-servirTacheProtegee(async () => {
+// Après une modification des règles : repasse les articles stockés au filtre, supprime
+// ceux qui ne passent plus et met à jour la catégorie des autres.
+async function reclasser() {
+  const { data, error } = await admin().from("articles").select("id, titre, source, extrait_court");
+  if (error) throw new Error(`Lecture des articles impossible : ${error.message}`);
+  const rejetes: number[] = [];
+  let gardes = 0;
+  for (const a of data ?? []) {
+    const d = classerArticle({ source: a.source, titre: a.titre, extrait: a.extrait_court ?? "" });
+    if (!d.garder) {
+      rejetes.push(a.id);
+      continue;
+    }
+    gardes++;
+    const { error: e } = await admin().from("articles")
+      .update({ categorie: d.categorie, impact_niveau: d.impact, region: d.region, tickers_lies: d.tickers })
+      .eq("id", a.id);
+    if (e) throw new Error(`Mise à jour impossible : ${e.message}`);
+  }
+  for (let i = 0; i < rejetes.length; i += 200) {
+    const { error: e } = await admin().from("articles").delete().in("id", rejetes.slice(i, i + 200));
+    if (e) throw new Error(`Suppression impossible : ${e.message}`);
+  }
+  return { message: `${gardes} articles gardés, ${rejetes.length} supprimés par le nouveau filtre.`, details: { gardes, supprimes: rejetes.length } };
+}
+
+servirTacheProtegee(async (corps) => {
+  if (corps.mode === "reclasser") {
+    const r = await executerTache("collecte-rss", reclasser);
+    return json(r, r.ok ? 200 : 500);
+  }
   const resultat = await executerTache("collecte-rss", async () => {
     const limite = Date.now() - FRAICHEUR_JOURS * 86_400_000;
     const bilan: Record<string, string> = {};

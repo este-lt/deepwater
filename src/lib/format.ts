@@ -39,13 +39,14 @@ export function formaterDateSeance(date: string | null | undefined): string {
   );
 }
 
-export type Frequence = "jour" | "mois" | "trimestre";
+export type Frequence = "jour" | "semaine" | "mois" | "trimestre";
 
 // Période d'une statistique datée au 1er du mois : "2026-09-01" -> "sept. 2026" (mensuelle),
 // "2026-04-01" -> "T2 2026" (trimestrielle) ; une série quotidienne garde son jour.
 export function formaterPeriode(date: string | null | undefined, frequence: Frequence): string {
   if (!date) return "—";
   if (frequence === "jour") return formaterDateSeance(date);
+  if (frequence === "semaine") return `semaine du ${formaterDateSeance(date)}`;
   const [a, m] = date.split("-").map(Number);
   if (frequence === "trimestre") return `T${Math.floor((m - 1) / 3) + 1} ${a}`;
   return new Intl.DateTimeFormat("fr-FR", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(a, m - 1, 1)));

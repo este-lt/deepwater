@@ -1,57 +1,74 @@
 import "server-only";
 import type { ClientSupabase } from "./supabase";
-import type { PrixRow, TickerRow } from "./types-supabase";
+import type { TickerRow } from "./types-supabase";
 
-export interface ResumeInstrument {
-  ticker: Pick<TickerRow, "id" | "symbole" | "nom" | "classe_actif" | "source_principale" | "note_source" | "prioritaire">;
-  derniere: Pick<PrixRow, "date" | "cloture" | "mm20" | "mm50" | "maj_le" | "source_donnee"> | null;
-  precedente: number | null;
-  variationPct: number | null;
-  // 60 dernières clôtures pour la mini-courbe.
-  tendance: number[];
+// Une ligne du moniteur multi-actifs (fonction SQL resume_marches).
+export interface LigneMarche {
+  symbole: string;
+  nom: string;
+  classe: TickerRow["classe_actif"];
+  unite: string | null;
+  // pct : variation en % ; pb : en points de base (taux, spreads) ; pts : en points (volatilité, indices composites).
+  variation: "pct" | "pb" | "pts";
+  decimales: number;
+  prioritaire: boolean;
+  noteSource: string | null;
+  date: string;
+  cloture: number;
+  source: string;
+  majLe: string;
+  mm20: number | null;
+  mm50: number | null;
+  var1j: number | null;
+  var1s: number | null;
+  var1m: number | null;
+  varAnnee: number | null;
+  courbe: number[];
+  // Dernière valeur plus ancienne que prévu (collecte en retard ou série publiée avec décalage).
+  ancienne: boolean;
 }
 
-const COLONNES_TICKER = "id, symbole, nom, classe_actif, source_principale, note_source, prioritaire";
-// Ordre d'affichage : S&P 500 puis Nasdaq-100, puis le reste par symbole.
-const ORDRE_AFFICHAGE = ["SPX", "NDX", "DJI", "EURUSD", "USDJPY", "GBPUSD", "USDCHF"];
+// Séries hebdomadaires ou publiées avec décalage : plus de tolérance avant l'alerte.
+const TOLERANCE_JOURS: Record<string, number> = { NFCI: 10, DXY: 12, WTI: 6, BRENT: 6, NATGAS: 6 };
 
-export async function lireResumes(
-  supabase: ClientSupabase,
-  filtre: { prioritaires: true } | { classes: TickerRow["classe_actif"][] },
-): Promise<ResumeInstrument[]> {
-  let requete = supabase.from("tickers_suivis").select(COLONNES_TICKER).eq("actif_bool", true);
-  requete = "prioritaires" in filtre
-    ? requete.eq("prioritaire", true)
-    : requete.eq("prioritaire", false).in("classe_actif", filtre.classes);
-  const { data: tickers, error } = await requete.order("symbole");
-  if (error) throw new Error(`Lecture des instruments impossible : ${error.message}`);
-  const ordre = (s: string) => {
-    const i = ORDRE_AFFICHAGE.indexOf(s);
-    return i === -1 ? ORDRE_AFFICHAGE.length : i;
-  };
-  const tries = [...(tickers ?? [])].sort((a, b) => ordre(a.symbole) - ordre(b.symbole));
+const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
-  return Promise.all(
-    tries.map(async (ticker) => {
-      const { data: prix, error: erreurPrix } = await supabase
-        .from("prix_historique")
-        .select("date, cloture, mm20, mm50, maj_le, source_donnee")
-        .eq("ticker_id", ticker.id)
-        .order("date", { ascending: false })
-        .limit(60);
-      if (erreurPrix) throw new Error(`Lecture des prix ${ticker.symbole} impossible : ${erreurPrix.message}`);
-      const lignes = prix ?? [];
-      const derniere = lignes[0] ?? null;
-      const precedente = lignes[1]?.cloture ?? null;
-      return {
-        ticker,
-        derniere,
-        precedente,
-        variationPct: derniere && precedente ? ((derniere.cloture - precedente) / precedente) * 100 : null,
-        tendance: lignes.map((l) => Number(l.cloture)).reverse(),
-      };
-    }),
-  );
+function ecart(type: LigneMarche["variation"], actuel: number, avant: number | null): number | null {
+  if (avant === null || !Number.isFinite(avant)) return null;
+  if (type === "pct") return avant === 0 ? null : (actuel / avant - 1) * 100;
+  if (type === "pb") return (actuel - avant) * 100;
+  return actuel - avant;
+}
+
+export async function lireMarches(supabase: ClientSupabase): Promise<LigneMarche[]> {
+  const { data, error } = await supabase.rpc("resume_marches");
+  if (error) throw new Error(`Lecture des marchés impossible : ${error.message}`);
+  return (data ?? []).map((l) => {
+    const cloture = Number(l.cloture);
+    const type = l.variation as LigneMarche["variation"];
+    return {
+      symbole: l.symbole,
+      nom: l.nom,
+      classe: l.classe_actif as LigneMarche["classe"],
+      unite: l.unite,
+      variation: type,
+      decimales: l.decimales,
+      prioritaire: l.prioritaire,
+      noteSource: l.note_source,
+      date: l.date,
+      cloture,
+      source: l.source_donnee,
+      majLe: l.maj_le,
+      mm20: num(l.mm20),
+      mm50: num(l.mm50),
+      var1j: ecart(type, cloture, num(l.precedente)),
+      var1s: ecart(type, cloture, num(l.il_y_a_1s)),
+      var1m: ecart(type, cloture, num(l.il_y_a_1m)),
+      varAnnee: ecart(type, cloture, num(l.fin_annee)),
+      courbe: (l.courbe ?? []).map(Number),
+      ancienne: valeurAncienne(l.date, TOLERANCE_JOURS[l.symbole] ?? 4),
+    };
+  });
 }
 
 export interface PointSerie {
@@ -109,19 +126,10 @@ export async function lireSerie(
   return { ticker: { symbole: ticker.symbole, nom: ticker.nom, note_source: ticker.note_source }, points, source, majLe };
 }
 
-// Libellé lisible d'une source technique ("fred:SP500" -> "FRED (Fed de St. Louis)").
-export function libelleSource(source: string | null | undefined): string {
-  if (!source) return "source inconnue";
-  if (source.startsWith("fred:")) return "FRED (Fed de St. Louis)";
-  if (source.startsWith("alpha_vantage:")) return "Alpha Vantage";
-  if (source.startsWith("sec")) return "SEC EDGAR";
-  return source;
-}
-
-// Une clôture quotidienne est "ancienne" si elle date de plus de 4 jours calendaires
-// (couvre un week-end prolongé ; au-delà, la collecte a probablement un problème).
-export function clotureAncienne(date: string | null | undefined, maintenant = new Date()): boolean {
+// Dernière valeur « ancienne » : plus de 4 jours calendaires (week-end prolongé compris)
+// pour une série quotidienne ; les séries hebdomadaires (NFCI, dollar) ont plus de marge.
+export function valeurAncienne(date: string | null | undefined, toleranceJours = 4, maintenant = new Date()): boolean {
   if (!date) return true;
   const ecartJours = (maintenant.getTime() - new Date(`${date}T23:59:59Z`).getTime()) / 86_400_000;
-  return ecartJours > 4;
+  return ecartJours > toleranceJours;
 }

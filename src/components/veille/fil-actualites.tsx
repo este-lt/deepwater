@@ -15,10 +15,8 @@ const REGIONS = [
 const CATEGORIES: Record<string, string> = {
   banque_centrale: "Banque centrale",
   statistique_macro: "Statistique macro",
-  mouvement_marche: "Mouvement de marché",
-  resultats: "Résultats",
-  fusion_acquisition: "Fusion-acquisition",
-  initie_institution: "Initiés / institutions",
+  marche: "Marchés",
+  politique_eco: "Politique économique",
 };
 
 const PAR_PAGE = 8;

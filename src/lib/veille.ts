@@ -51,12 +51,26 @@ export interface Reunion {
 type Unite = "pct" | "milliers";
 
 // Indicateurs publiés détectés par le collecteur (voir supabase/functions/_shared/calendrier.ts).
-export const PUBLICATIONS: Record<string, { libelle: string; unite: Unite; frequence: Frequence }> = {
-  CPI: { libelle: "Inflation (CPI, sur 1 an)", unite: "pct", frequence: "mois" },
-  UNEMPLOYMENT: { libelle: "Taux de chômage", unite: "pct", frequence: "mois" },
-  NONFARM_PAYROLL: { libelle: "Emplois non agricoles (variation mensuelle)", unite: "milliers", frequence: "mois" },
-  REAL_GDP: { libelle: "PIB réel (trimestre annualisé)", unite: "pct", frequence: "trimestre" },
+export const PUBLICATIONS: Record<string, { libelle: string; unite: Unite; frequence: Frequence; signe: boolean }> = {
+  CPI: { libelle: "Inflation (CPI, sur 1 an)", unite: "pct", frequence: "mois", signe: false },
+  CORE_CPI: { libelle: "CPI sous-jacent (sur 1 an)", unite: "pct", frequence: "mois", signe: false },
+  CORE_PCE: { libelle: "PCE sous-jacent (sur 1 an)", unite: "pct", frequence: "mois", signe: false },
+  PPI: { libelle: "Prix à la production (sur 1 an)", unite: "pct", frequence: "mois", signe: false },
+  NONFARM_PAYROLL: { libelle: "Emplois créés (NFP)", unite: "milliers", frequence: "mois", signe: true },
+  UNEMPLOYMENT: { libelle: "Taux de chômage", unite: "pct", frequence: "mois", signe: false },
+  JOBLESS_CLAIMS: { libelle: "Inscriptions au chômage", unite: "milliers", frequence: "semaine", signe: false },
+  RETAIL_SALES: { libelle: "Ventes au détail (sur 1 mois)", unite: "pct", frequence: "mois", signe: true },
+  REAL_GDP: { libelle: "PIB réel (trimestre annualisé)", unite: "pct", frequence: "trimestre", signe: false },
 };
+
+// Publications à venir (API FRED) : toutes à 8 h 30, heure de New York.
+export interface Prevue {
+  id: number;
+  libelle: string;
+  date: string;
+  annonceUtc: string;
+  impact: CalendrierRow["impact"];
+}
 
 export interface Publication {
   id: number;
@@ -64,6 +78,7 @@ export interface Publication {
   libelle: string;
   unite: Unite;
   frequence: Frequence;
+  signe: boolean;
   periode: string | null;
   detecteeLe: string;
   // Premier chargement : la date réelle de publication n'est pas connue.
@@ -76,6 +91,7 @@ export interface Publication {
 
 export interface EtatCalendrier {
   reunions: Reunion[];
+  prevues: Prevue[];
   publications: Publication[];
   majLe: string | null;
 }
@@ -84,7 +100,7 @@ const num = (v: number | string | null) => (v === null ? null : Number(v));
 
 export async function lireCalendrier(supabase: ClientSupabase): Promise<EtatCalendrier> {
   const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  const [reunions, publications] = await Promise.all([
+  const [reunions, publications, prevues] = await Promise.all([
     supabase
       .from("calendrier_economique")
       .select("id, indicateur, libelle, date_evenement, date_estimee, source_donnee")
@@ -97,8 +113,16 @@ export async function lireCalendrier(supabase: ClientSupabase): Promise<EtatCale
       .select("id, indicateur, libelle, date_reference, date_evenement, date_estimee, valeur, valeur_precedente, variation, source_donnee, maj_le")
       .eq("type_evenement", "publication")
       .order("date_evenement", { ascending: false })
-      .limit(40),
+      .limit(60),
+    supabase
+      .from("calendrier_economique")
+      .select("id, libelle, date_evenement, impact")
+      .eq("type_evenement", "publication_prevue")
+      .gte("date_evenement", hier)
+      .order("date_evenement", { ascending: true })
+      .limit(12),
   ]);
+  if (prevues.error) throw new Error(`Lecture des publications à venir impossible : ${prevues.error.message}`);
   if (reunions.error) throw new Error(`Lecture du calendrier impossible : ${reunions.error.message}`);
   if (publications.error) throw new Error(`Lecture des publications impossible : ${publications.error.message}`);
 
@@ -133,6 +157,7 @@ export async function lireCalendrier(supabase: ClientSupabase): Promise<EtatCale
       libelle: def.libelle,
       unite: def.unite,
       frequence: def.frequence,
+      signe: def.signe,
       periode: l.date_reference,
       detecteeLe: l.date_evenement,
       dateInconnue: l.date_estimee,
@@ -143,8 +168,14 @@ export async function lireCalendrier(supabase: ClientSupabase): Promise<EtatCale
     }];
   });
 
+  const aVenir = (prevues.data ?? [])
+    .map((p) => ({ id: p.id, libelle: p.libelle, date: p.date_evenement, annonceUtc: instantFuseau(p.date_evenement, "08:30", "America/New_York"), impact: p.impact }))
+    .filter((p) => Date.parse(p.annonceUtc) + 3_600_000 >= maintenant)
+    .slice(0, 6);
+
   return {
     reunions: prochaines,
+    prevues: aVenir,
     publications: dernieres,
     majLe: lignes.reduce<string | null>((max, l) => (max === null || l.maj_le > max ? l.maj_le : max), null),
   };

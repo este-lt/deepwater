@@ -24,8 +24,7 @@ export type ParametresRow = {
   id: string;
   clerk_user_id: string;
   biais_auto_actif: boolean;
-  marches_optionnels: string[];
-  sections_repliees: string[];
+  classes_affichees: string[];
   cree_le: string;
   mis_a_jour_le: string;
 }
@@ -34,12 +33,16 @@ export type TickerRow = {
   id: string;
   symbole: string;
   nom: string;
-  classe_actif: "action" | "forex" | "indice" | "matiere" | "taux";
+  classe_actif: "indice" | "volatilite" | "taux" | "credit" | "forex" | "matiere" | "crypto";
   actif_bool: boolean;
   prioritaire: boolean;
   source_principale: string;
   symboles_source: Json;
   note_source: string | null;
+  ordre: number;
+  unite: string | null;
+  variation: "pct" | "pb" | "pts";
+  decimales: number;
   cree_le: string;
 }
 
@@ -82,42 +85,6 @@ export type ValidationRow = {
   cree_le: string;
 }
 
-export type FluxInitieRow = {
-  id: number;
-  entreprise: string;
-  cik: string;
-  secteur: string | null;
-  personne: string;
-  poste: string | null;
-  type_transaction: string;
-  code_transaction: string;
-  acquis_cede: "A" | "D" | null;
-  nombre_titres: number | null;
-  prix_unitaire: number | null;
-  montant: number | null;
-  date: string;
-  date_depot: string;
-  source_formulaire: string;
-  numero_acces: string;
-  ligne: number;
-  cree_le: string;
-}
-
-export type PositionInstitutionnelleRow = {
-  id: number;
-  entreprise: string;
-  cusip: string | null;
-  institution: string;
-  cik_institution: string;
-  nombre_parts: number;
-  valeur_usd: number | null;
-  variation_trimestre: number | null;
-  date_rapport: string;
-  date_depot: string;
-  numero_acces: string;
-  cree_le: string;
-}
-
 export type TauxRow = {
   id: number;
   date: string;
@@ -125,18 +92,6 @@ export type TauxRow = {
   taux: number;
   spread_10_2: number | null;
   spread_30_2: number | null;
-  source_donnee: string;
-  maj_le: string;
-}
-
-export type MatiereRow = {
-  id: number;
-  nom: string;
-  date: string;
-  prix: number;
-  variation_1j: number | null;
-  variation_1an: number | null;
-  unite: string | null;
   source_donnee: string;
   maj_le: string;
 }
@@ -155,7 +110,7 @@ export type CalendrierRow = {
   id: number;
   indicateur: string;
   libelle: string;
-  type_evenement: "publication" | "banque_centrale";
+  type_evenement: "publication" | "publication_prevue" | "banque_centrale";
   date_reference: string | null;
   date_evenement: string;
   date_estimee: boolean;
@@ -181,40 +136,6 @@ export type ArticleRow = {
   tickers_lies: string[];
   sentiment: number | null;
   cree_le: string;
-}
-
-export type DepotSecRow = {
-  id: number;
-  entreprise: string;
-  cik: string;
-  type_formulaire: string;
-  date_depot: string;
-  resume_auto: string | null;
-  url_source: string;
-  numero_acces: string;
-  cree_le: string;
-}
-
-export type FondamentalesRow = {
-  id: number;
-  entreprise: string;
-  date_cloture: string;
-  periode: "annuel" | "trimestriel" | "instantane";
-  devise: string | null;
-  actions_en_circulation: number | null;
-  chiffre_affaires: number | null;
-  resultat_net: number | null;
-  capitaux_propres: number | null;
-  dette_totale: number | null;
-  flux_tresorerie_operationnel: number | null;
-  bpa: number | null;
-  per: number | null;
-  roe: number | null;
-  marge_nette: number | null;
-  dette_sur_fonds_propres: number | null;
-  controle_sec: Json | null;
-  source_donnee: string;
-  maj_le: string;
 }
 
 export type ConfigRow = {
@@ -272,23 +193,6 @@ export type CollecteRow = {
   verrou_jusqu_a: string | null;
 }
 
-export type EntrepriseSuivieRow = {
-  symbole: string;
-  cik: string;
-  nom: string;
-  secteur: string;
-  cusip6: string;
-  mot_cle_13f: string;
-  indices: string[];
-  actif: boolean;
-}
-
-export type InstitutionSuivieRow = {
-  cik: string;
-  nom: string;
-  actif: boolean;
-}
-
 export type Database = {
   public: {
     Tables: {
@@ -298,22 +202,15 @@ export type Database = {
       prix_historique: Table<PrixRow, "ticker_id" | "date" | "cloture" | "source_donnee">;
       biais_quotidien: Table<BiaisRow, "date" | "ticker_id" | "biais" | "score_numerique" | "origine">;
       validations_biais: Table<ValidationRow, "biais_id" | "decision">;
-      flux_inities: Table<FluxInitieRow>;
-      positions_institutionnelles: Table<PositionInstitutionnelleRow>;
       taux_tresor: Table<TauxRow>;
-      matieres_premieres: Table<MatiereRow>;
       indicateurs_macro: Table<MacroRow>;
       calendrier_economique: Table<CalendrierRow>;
       articles: Table<ArticleRow>;
-      depots_sec_recents: Table<DepotSecRow>;
-      fondamentales: Table<FondamentalesRow>;
       config_app: Table<ConfigRow, "cle" | "valeur">;
       logs_taches: Table<LogTacheRow>;
       taches_planifiees: Table<TachePlanifieeRow>;
       quota_api: Table<QuotaRow>;
       collectes_planifiees: Table<CollecteRow>;
-      entreprises_suivies_sec: Table<EntrepriseSuivieRow>;
-      institutions_suivies: Table<InstitutionSuivieRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -321,17 +218,31 @@ export type Database = {
       sante: { Args: never; Returns: Json };
       reserver_calcul_manuel: { Args: never; Returns: Json };
       derniere_reussite: { Args: { p_tache: string }; Returns: string | null };
-      flux_inities_agreges: {
-        Args: { p_jours?: number };
-        Returns: { entreprise: string; nom: string; secteur: string; achats: number; ventes: number; net: number; nb_achats: number; nb_ventes: number; derniere_date: string | null }[];
-      };
-      flux_inities_par_secteur: {
-        Args: { p_jours?: number };
-        Returns: { secteur: string; achats: number; ventes: number; net: number; nb_entreprises: number }[];
-      };
-      positions_institutions_agregees: {
+      resume_marches: {
         Args: never;
-        Returns: { entreprise: string; nom: string; secteur: string; date_rapport: string; parts_totales: number; valeur_usd: number; variation_parts: number | null; nb_hausse: number; nb_baisse: number; nb_institutions: number }[];
+        Returns: {
+          ticker_id: string;
+          symbole: string;
+          nom: string;
+          classe_actif: string;
+          unite: string | null;
+          variation: string;
+          decimales: number;
+          ordre: number;
+          prioritaire: boolean;
+          note_source: string | null;
+          date: string;
+          cloture: number;
+          source_donnee: string;
+          maj_le: string;
+          mm20: number | null;
+          mm50: number | null;
+          precedente: number | null;
+          il_y_a_1s: number | null;
+          il_y_a_1m: number | null;
+          fin_annee: number | null;
+          courbe: number[] | null;
+        }[];
       };
       admin_etat_cron: {
         Args: never;

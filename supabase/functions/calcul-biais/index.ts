@@ -8,29 +8,17 @@ import { executerTache } from "../_shared/journal.ts";
 import { admin } from "../_shared/supabase.ts";
 import {
   combiner,
-  facteurFlux,
   facteurMacro,
+  facteurRisque,
   facteurTaux,
   facteurTendance,
-  type MouvementInstitution,
+  type PointTaux,
   type PublicationMacro,
   seanceVisee,
-  type TransactionInitie,
 } from "./facteurs.ts";
 import { type CleIndice, REGLES_BIAIS } from "./regles.ts";
 
 const jourMoins = (jours: number) => new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
-
-// Lecture paginée (PostgREST plafonne à 1 000 lignes par requête).
-async function toutLire<T>(requete: (de: number, a: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
-  const lignes: T[] = [];
-  for (let de = 0;; de += 1000) {
-    const { data, error } = await requete(de, de + 999);
-    if (error) throw new Error(error.message);
-    lignes.push(...(data ?? []));
-    if (!data || data.length < 1000) return lignes;
-  }
-}
 
 servirTacheProtegee(async (corps) => {
   const origine = corps.mode === "manuel" ? "manuel" : "auto";
@@ -38,31 +26,32 @@ servirTacheProtegee(async (corps) => {
     const db = admin();
     const seance = seanceVisee(new Date());
     const aujourdhui = new Date().toISOString().slice(0, 10);
-    const { flux: rFlux, macro: rMacro, taux: rTaux } = REGLES_BIAIS;
+    const { macro: rMacro, taux: rTaux, risque: rRisque } = REGLES_BIAIS;
+    const symbolesRisque = [...new Set([rRisque.credit, ...Object.values(REGLES_BIAIS.indices).map((i) => i.volatilite)])];
 
-    const [tickers, taux, publications, inities, institutions] = await Promise.all([
-      db.from("tickers_suivis").select("id, symbole").in("symbole", Object.keys(REGLES_BIAIS.indices)),
+    const [tickers, taux, publications] = await Promise.all([
+      db.from("tickers_suivis").select("id, symbole").in("symbole", [...Object.keys(REGLES_BIAIS.indices), ...symbolesRisque]),
       db.from("taux_tresor").select("date, taux, source_donnee").eq("maturite", rTaux.maturite).gte("date", jourMoins(rTaux.joursMoyenne + 30)).order("date"),
       db.from("calendrier_economique")
         .select("indicateur, date_reference, date_evenement, valeur, variation")
         .eq("type_evenement", "publication")
         .gte("date_evenement", jourMoins(rMacro.fenetreJours))
         .order("date_evenement", { ascending: false }),
-      toutLire<{ entreprise: string; code_transaction: string; montant: number | null; date_depot: string }>((de, a) =>
-        db.from("flux_inities")
-          .select("entreprise, code_transaction, montant, date_depot")
-          .in("code_transaction", ["P", "S"])
-          .gte("date_depot", jourMoins(rFlux.joursRecents * (rFlux.semainesReference + 1)))
-          .order("id")
-          .range(de, a)
-      ),
-      db.from("positions_institutionnelles")
-        .select("entreprise, variation_trimestre, valeur_usd, nombre_parts, date_depot")
-        .not("variation_trimestre", "is", null)
-        .gte("date_depot", jourMoins(rFlux.joursRecents)),
     ]);
-    for (const [nom, r] of [["tickers", tickers], ["taux", taux], ["calendrier", publications], ["13F", institutions]] as const) {
+    for (const [nom, r] of [["instruments", tickers], ["taux", taux], ["calendrier", publications]] as const) {
       if (r.error) throw new Error(`Lecture ${nom} impossible : ${r.error.message}`);
+    }
+    const idDe = new Map((tickers.data ?? []).map((t) => [t.symbole, t.id]));
+
+    // Séries de risque (volatilité implicite, spread de crédit) sur un an.
+    const series = new Map<string, PointTaux[]>();
+    for (const symbole of symbolesRisque) {
+      const id = idDe.get(symbole);
+      if (!id) continue;
+      const { data, error } = await db.from("prix_historique").select("date, cloture")
+        .eq("ticker_id", id).gte("date", jourMoins(rRisque.joursMediane + 30)).order("date");
+      if (error) throw new Error(`Lecture de ${symbole} impossible : ${error.message}`);
+      series.set(symbole, (data ?? []).map((p) => ({ date: p.date, taux: Number(p.cloture) })));
     }
 
     // Dernière publication de chaque indicateur.
@@ -77,26 +66,17 @@ servirTacheProtegee(async (corps) => {
         variation: p.variation === null ? null : Number(p.variation),
       });
     }
-    const transactions: TransactionInitie[] = inities.map((t) => ({
-      entreprise: t.entreprise, code: t.code_transaction, montant: t.montant === null ? null : Number(t.montant), date_depot: t.date_depot,
-    }));
-    const mouvements: MouvementInstitution[] = (institutions.data ?? []).map((m) => ({
-      entreprise: m.entreprise,
-      variation: Number(m.variation_trimestre),
-      valeur: m.valeur_usd === null ? null : Number(m.valeur_usd),
-      parts: Number(m.nombre_parts),
-      date_depot: m.date_depot,
-    }));
     const serieTaux = (taux.data ?? []).map((p) => ({ date: p.date, taux: Number(p.taux) }));
-    const sourceTaux = taux.data?.at(-1)?.source_donnee ?? "alpha_vantage:TREASURY_YIELD";
+    const sourceTaux = taux.data?.at(-1)?.source_donnee ?? "fred:DGS10";
 
     const bilan: Record<string, string> = {};
-    for (const ticker of tickers.data ?? []) {
-      const indice = ticker.symbole as CleIndice;
+    for (const indice of Object.keys(REGLES_BIAIS.indices) as CleIndice[]) {
+      const tickerId = idDe.get(indice);
+      if (!tickerId) continue;
       const { data: prix, error: erreurPrix } = await db
         .from("prix_historique")
         .select("date, cloture, mm20, mm50, source_donnee")
-        .eq("ticker_id", ticker.id)
+        .eq("ticker_id", tickerId)
         .order("date", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -109,8 +89,8 @@ servirTacheProtegee(async (corps) => {
           aujourdhui,
         ),
         facteurTaux(indice, serieTaux, aujourdhui, sourceTaux),
-        facteurMacro(indice, [...dernieres.values()], aujourdhui, "alpha_vantage (BLS, BEA)"),
-        facteurFlux(indice, transactions, mouvements, aujourdhui),
+        facteurMacro(indice, [...dernieres.values()], aujourdhui, "FRED (BLS, BEA)"),
+        facteurRisque(indice, series.get(REGLES_BIAIS.indices[indice].volatilite) ?? [], series.get(rRisque.credit) ?? [], aujourdhui),
       ]);
       if (!r.ok) {
         bilan[indice] = `non publié : ${r.raison}`;
@@ -121,7 +101,7 @@ servirTacheProtegee(async (corps) => {
       const { data: actif } = await db
         .from("biais_quotidien")
         .select("id, facteurs")
-        .eq("ticker_id", ticker.id)
+        .eq("ticker_id", tickerId)
         .eq("date", seance)
         .eq("statut", "actif")
         .maybeSingle();
@@ -135,7 +115,7 @@ servirTacheProtegee(async (corps) => {
       const { error } = await db.rpc("remplacer_biais", {
         p_biais: {
           date: seance,
-          ticker_id: ticker.id,
+          ticker_id: tickerId,
           biais: r.biais,
           score_numerique: r.score,
           raisons: r.raisons,

@@ -12,6 +12,10 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
 import { Horodatage } from "@/components/horodatage";
+import { CLASSES, libelleSource } from "@/lib/sources";
+
+// Même nom d'événement que le moniteur (un clic sur une ligne ouvre l'instrument ici).
+const EVENEMENT_GRAPHIQUE = "deepwater:graphique";
 
 interface Point {
   date: string;
@@ -39,23 +43,26 @@ const PERIODES = [
 
 const COULEURS = { accent: "#7c6cff", mm20: "#fbbf24", mm50: "#38bdf8", texte: "#8d94a7", grille: "rgba(255,255,255,0.05)" };
 
-function libelleSource(source: string | null): string {
-  if (!source) return "source inconnue";
-  if (source.startsWith("fred:")) return "FRED (Fed de St. Louis)";
-  if (source.startsWith("alpha_vantage:")) return "Alpha Vantage";
-  return source;
-}
-
-export function GraphiquePrix({ instruments }: { instruments: { symbole: string; nom: string }[] }) {
+export function GraphiquePrix({ instruments, initial }: { instruments: { symbole: string; nom: string; classe: string }[]; initial?: string }) {
   const conteneur = useRef<HTMLDivElement>(null);
   const graphique = useRef<IChartApi | null>(null);
-  const [symbole, setSymbole] = useState(instruments[0]?.symbole ?? "");
+  const [symbole, setSymbole] = useState(initial ?? instruments[0]?.symbole ?? "");
   const [periode, setPeriode] = useState<(typeof PERIODES)[number]["cle"]>("1a");
   // L'état d'affichage découle de la série demandée et de la dernière réponse reçue.
   const demandee = `${symbole}|${periode}`;
   const [reponse, setReponse] = useState<{ cle: string; serie: Serie | null; erreur: boolean } | null>(null);
   const serie = reponse?.cle === demandee ? reponse.serie : null;
   const etat = reponse?.cle !== demandee ? "chargement" : reponse.erreur ? "erreur" : "pret";
+
+  // Sélection depuis le moniteur multi-actifs.
+  useEffect(() => {
+    const ouvrir = (e: Event) => {
+      const choisi = (e as CustomEvent<string>).detail;
+      if (instruments.some((i) => i.symbole === choisi)) setSymbole(choisi);
+    };
+    window.addEventListener(EVENEMENT_GRAPHIQUE, ouvrir);
+    return () => window.removeEventListener(EVENEMENT_GRAPHIQUE, ouvrir);
+  }, [instruments]);
 
   // Chargement de la série (lecture en base via /api/series).
   useEffect(() => {
@@ -140,21 +147,25 @@ export function GraphiquePrix({ instruments }: { instruments: { symbole: string;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1" role="tablist" aria-label="Instrument">
-          {instruments.map((i) => (
-            <button
-              key={i.symbole}
-              role="tab"
-              aria-selected={symbole === i.symbole}
-              onClick={() => setSymbole(i.symbole)}
-              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                symbole === i.symbole ? "bg-surface-3 text-texte shadow-sm" : "text-attenue hover:text-texte"
-              }`}
-            >
-              {i.nom}
-            </button>
-          ))}
-        </div>
+        <label className="min-w-0">
+          <span className="sr-only">Instrument</span>
+          <select
+            value={symbole}
+            onChange={(e) => setSymbole(e.target.value)}
+            className="max-w-full rounded-xl border border-bordure bg-surface-2 px-3 py-2 text-sm font-medium focus:border-accent/60"
+          >
+            {CLASSES.map((c) => {
+              const liste = instruments.filter((i) => i.classe === c.cle);
+              return liste.length === 0 ? null : (
+                <optgroup key={c.cle} label={c.libelle}>
+                  {liste.map((i) => (
+                    <option key={i.symbole} value={i.symbole}>{i.nom}</option>
+                  ))}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
         <div className="flex gap-1 rounded-xl bg-surface-2 p-1" role="tablist" aria-label="Période">
           {PERIODES.map((p) => (
             <button

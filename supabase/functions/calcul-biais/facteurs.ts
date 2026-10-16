@@ -35,21 +35,6 @@ export interface PublicationMacro {
   variation: number | null;
 }
 
-export interface TransactionInitie {
-  entreprise: string;
-  code: string;
-  montant: number | null;
-  date_depot: string;
-}
-
-export interface MouvementInstitution {
-  entreprise: string;
-  variation: number;
-  valeur: number | null;
-  parts: number;
-  date_depot: string;
-}
-
 // --- Outils -----------------------------------------------------------------
 
 const borner = (v: number) => Math.max(-1, Math.min(1, v));
@@ -166,7 +151,7 @@ export function facteurMacro(indice: CleIndice, publications: PublicationMacro[]
   });
   const parties = recentes.map((p) => {
     const def = r.indicateurs[p.indicateur];
-    const valeur = p.valeur === null ? "—" : def.unite === "k" ? `${signe(p.valeur)}${nf(Math.abs(p.valeur), 0)} k` : `${nf(p.valeur, 1)} %`;
+    const valeur = p.valeur === null ? "—" : p.indicateur === "JOBLESS_CLAIMS" ? `${nf(p.valeur, 0)} k` : def.unite === "k" ? `${signe(p.valeur)}${nf(Math.abs(p.valeur), 0)} k` : `${nf(p.valeur, 1)} %`;
     const periode = p.periode ? ` (${moisAnnee(p.periode)})` : "";
     return `${def.libelle} ${valeur}${periode}, ${signe(p.variation!)}${nf(Math.abs(p.variation!), def.unite === "k" ? 0 : 1)} ${def.unite} vs la précédente`;
   });
@@ -183,75 +168,58 @@ export function facteurMacro(indice: CleIndice, publications: PublicationMacro[]
   };
 }
 
-export function facteurFlux(
-  indice: CleIndice,
-  inities: TransactionInitie[],
-  institutions: MouvementInstitution[],
-  aujourdhui: string,
-): Facteur {
-  const r = REGLES_BIAIS.flux;
-  const poids = REGLES_BIAIS.indices[indice].poids.flux;
-  const filtre = REGLES_BIAIS.indices[indice].entreprises;
-  const garde = (e: string) => filtre === null || filtre.includes(e);
-  const nom = "Flux initiés et institutions";
-  const source = "SEC EDGAR (formulaires 4 et 13F)";
+// Appétit pour le risque : volatilité implicite (VIX pour le S&P 500, VXN pour le
+// Nasdaq-100) et spread de crédit à haut rendement. Séries triées ou non.
+export function facteurRisque(indice: CleIndice, volatilite: PointTaux[], credit: PointTaux[], aujourdhui: string): Facteur {
+  const r = REGLES_BIAIS.risque;
+  const poids = REGLES_BIAIS.indices[indice].poids.risque;
+  const nomVol = REGLES_BIAIS.indices[indice].volatilite;
+  const nom = "Appétit pour le risque";
+  const source = `FRED (${nomVol}, spread haut rendement ICE BofA)`;
+  const recente = (s: PointTaux[]) => {
+    const tries = [...s].sort((a, b) => a.date.localeCompare(b.date));
+    const dernier = tries.at(-1);
+    return dernier && joursEntre(dernier.date, aujourdhui) <= r.ageMaxJours ? tries : null;
+  };
 
-  // Initiés : flux net (achats - ventes) par semaine glissante de dépôt.
-  const semaines = new Array(r.semainesReference + 1).fill(0);
-  let vu = false;
-  for (const t of inities) {
-    if (!garde(t.entreprise) || t.montant === null || (t.code !== "P" && t.code !== "S")) continue;
-    const age = joursEntre(t.date_depot, aujourdhui);
-    if (age < 0) continue;
-    const k = Math.floor(age / r.joursRecents);
-    if (k > r.semainesReference) continue;
-    semaines[k] += t.code === "P" ? t.montant : -t.montant;
-    vu = true;
+  const parties: { note: number; part: number; texte: string }[] = [];
+  const vol = recente(volatilite);
+  const refVol = vol?.at(-1 - r.seancesVariation);
+  if (vol && refVol) {
+    const dernier = vol.at(-1)!;
+    const annee = vol.filter((p) => joursEntre(p.date, dernier.date) <= r.joursMediane).map((p) => p.taux).sort((a, b) => a - b);
+    const mediane = annee[Math.floor(annee.length / 2)];
+    const variation = dernier.taux - refVol.taux;
+    const note = -(0.5 * borner((dernier.taux - mediane) / r.ecartPleinVolPts) + 0.5 * borner(variation / r.variationPleineVolPts));
+    parties.push({
+      note,
+      part: r.partVolatilite,
+      texte: `${nomVol} à ${nf(dernier.taux, 2)} le ${dateCourte(dernier.date)} (médiane d'un an : ${nf(mediane, 2)}), ${signe(variation)}${nf(Math.abs(variation), 2)} pt en ${r.seancesVariation} séances`,
+    });
   }
-  const recent = semaines[0];
-  const reference = semaines.slice(1);
-  const moyenne = reference.reduce((s, v) => s + v, 0) / reference.length;
-  const ecartType = Math.sqrt(reference.reduce((s, v) => s + (v - moyenne) ** 2, 0) / reference.length);
-  const sens = (v: number) => (v < 0 ? "ventes nettes" : "achats nets");
-  let noteInities: number | null = null;
-  let texteInities = "Initiés : aucune transaction sur le marché déposée sur la période.";
-  if (vu && ecartType > 0) {
-    noteInities = borner((recent - moyenne) / ecartType / r.zPlein);
-    texteInities = `Initiés : ${recent === 0 ? "aucun achat ni vente" : `${sens(recent)} de ${montantCourt(recent)}`} dans les formulaires déposés en ${r.joursRecents} jours, contre ${sens(moyenne)} de ${montantCourt(moyenne)} par semaine en moyenne sur ${r.semainesReference} semaines`;
+  const hy = recente(credit);
+  const refHy = hy?.at(-1 - r.seancesVariation);
+  if (hy && refHy) {
+    const dernier = hy.at(-1)!;
+    const variation = dernier.taux - refHy.taux;
+    parties.push({
+      note: -borner(variation / r.variationPleineCreditPts),
+      part: 1 - r.partVolatilite,
+      texte: `spread haut rendement ${nf(dernier.taux, 2)} % (${signe(variation)}${nf(Math.abs(variation), 2)} pt en ${r.seancesVariation} séances)`,
+    });
   }
-
-  // Institutions : variation nette des titres détenus dans les 13F déposés récemment.
-  const recents13f = institutions.filter(
-    (m) => garde(m.entreprise) && m.parts > 0 && m.valeur !== null && joursEntre(m.date_depot, aujourdhui) < r.joursRecents,
-  );
-  let noteInstitutions: number | null = null;
-  let texteInstitutions = `aucune déclaration 13F déposée en ${r.joursRecents} jours`;
-  if (recents13f.length > 0) {
-    const valeurTotale = recents13f.reduce((s, m) => s + m.valeur!, 0);
-    const valeurVariation = recents13f.reduce((s, m) => s + m.variation * (m.valeur! / m.parts), 0);
-    // Variation rapportée à la position du trimestre précédent (nouvelle position entière : +100 %).
-    const avant = valeurTotale - valeurVariation;
-    const pct = avant > 0 ? (valeurVariation / avant) * 100 : 100;
-    noteInstitutions = borner(pct / r.variationPleineInstitutionsPct);
-    texteInstitutions = `13F déposés en ${r.joursRecents} jours : ${signe(pct)}${nf(Math.abs(pct), 1)} % de titres détenus (${recents13f.length} lignes)`;
-  }
-
-  const parties = [
-    noteInities === null ? null : { note: noteInities, part: r.partInities },
-    noteInstitutions === null ? null : { note: noteInstitutions, part: 1 - r.partInities },
-  ].filter((x): x is { note: number; part: number } => x !== null);
-  if (parties.length === 0) return indisponible("flux", nom, poids, `${texteInities} ; ${texteInstitutions}.`, source);
+  if (parties.length === 0) return indisponible("risque", nom, poids, `${nomVol} et spread de crédit absents ou trop anciens.`, source);
   const note = parties.reduce((s, p) => s + p.note * p.part, 0) / parties.reduce((s, p) => s + p.part, 0);
   return {
-    cle: "flux",
+    cle: "risque",
     libelle: nom,
     statut: "ok",
     note: arrondi(note),
     poids,
     contribution: null,
-    texte: `${texteInities} ; ${texteInstitutions}.`,
+    texte: `${parties.map((p) => p.texte).join(" ; ")}.`,
     source,
-    date: aujourdhui,
+    date: [...(vol ?? []), ...(hy ?? [])].map((p) => p.date).sort().at(-1) ?? null,
   };
 }
 

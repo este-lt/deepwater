@@ -59,3 +59,16 @@ Deno.test("PIB : croissance trimestrielle annualisée (GDPC1)", () => {
 Deno.test("indicateur sans publication", () => {
   egal(calculerPublication("FEDERAL_FUNDS_RATE", CPI), null, "taux directeur");
 });
+
+Deno.test("inscriptions au chômage : série hebdomadaire, en milliers (ICSA)", () => {
+  const r = calculerPublication("JOBLESS_CLAIMS", serie({ "2026-10-03": 198000, "2026-10-10": 199000 }));
+  egal(r, { date: "2026-10-10", valeur: 199, precedente: 198, variation: 1 }, "ICSA 10/10/2026");
+});
+
+Deno.test("ventes au détail sur 1 mois et prix à la production sur 1 an (valeurs FRED réelles)", () => {
+  const ventes = calculerPublication("RETAIL_SALES", serie({ "2026-07-01": 735000, "2026-08-01": 739322, "2026-09-01": 745021 }));
+  egal(ventes?.valeur, 0.771, "ventes septembre 2026");
+  // PPIFID : 150,100 (sept. 2025) -> 159,613 (sept. 2026) = +6,3 %, comme annoncé par le BLS.
+  const ppi = calculerPublication("PPI", serie({ "2025-08-01": 149.466, "2025-09-01": 150.100, "2026-08-01": 157.855, "2026-09-01": 159.613 }));
+  egal(ppi?.valeur, 6.338, "PPI septembre 2026");
+});

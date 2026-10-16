@@ -1,9 +1,8 @@
 import { Carte, Pastille } from "@/components/carte";
 import { Horodatage } from "@/components/horodatage";
 import { MiniCourbe } from "@/components/marches/mini-courbe";
-import { formaterDateSeance, formaterNombre, formaterPct, formaterPeriode, tonVariation } from "@/lib/format";
-import { MATIERES, type EtatTaux } from "@/lib/macro";
-import type { MatiereRow } from "@/lib/types-supabase";
+import { formaterDateSeance, formaterNombre } from "@/lib/format";
+import type { EtatTaux } from "@/lib/macro";
 
 // Courbe des taux (rendement selon la maturité), axe horizontal en échelle racine
 // pour ne pas écraser les maturités courtes.
@@ -57,13 +56,12 @@ function LigneSpread({ libelle, valeur }: { libelle: string; valeur: number | nu
   );
 }
 
-export function SectionTaux({ taux, matieres }: { taux: EtatTaux; matieres: (MatiereRow | null)[] }) {
+export function SectionTaux({ taux }: { taux: EtatTaux }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <Carte
-        titre="Taux du Trésor américain"
+        titre="Courbe des taux américains"
         sousTitre={taux.date ? `Rendements au ${formaterDateSeance(taux.date)}` : "En attente de la première collecte"}
-        pied={<Horodatage iso={taux.majLe} source="Alpha Vantage (données Fed H.15)" seuilHeures={36} />}
+        pied={<Horodatage iso={taux.majLe} source="FRED (Fed, H.15)" seuilHeures={36} />}
       >
         {taux.points.length === 0 ? (
           <p className="text-sm text-attenue">Pas encore de données.</p>
@@ -99,43 +97,5 @@ export function SectionTaux({ taux, matieres }: { taux: EtatTaux; matieres: (Mat
         )}
       </Carte>
 
-      <Carte titre="Matières premières" sousTitre="Prix de référence quotidiens ou mensuels">
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {MATIERES.map((m, i) => {
-            const ligne = matieres[i];
-            return (
-              <li key={m.nom} className="flex flex-col gap-1 rounded-xl bg-surface-2 p-3">
-                <span className="text-xs text-attenue">{m.libelle}</span>
-                {ligne ? (
-                  <>
-                    <span className="chiffres text-lg font-semibold">
-                      {formaterNombre(Number(ligne.prix), 2)} <span className="text-xs font-normal text-attenue">{m.unite}</span>
-                    </span>
-                    <span className="chiffres flex flex-wrap gap-x-3 text-xs">
-                      <span className={tonVariation(ligne.variation_1j) === "hausse" ? "text-hausse" : tonVariation(ligne.variation_1j) === "baisse" ? "text-baisse" : "text-attenue"}>
-                        {formaterPct(ligne.variation_1j === null ? null : Number(ligne.variation_1j))} / {m.frequence === "mois" ? "1 mois" : "séance"}
-                      </span>
-                      <span className="text-attenue">{formaterPct(ligne.variation_1an === null ? null : Number(ligne.variation_1an))} / 1 an</span>
-                    </span>
-                    <span className="text-[0.7rem] text-discret">
-                      {m.frequence === "mois" ? `moyenne de ${formaterPeriode(ligne.date, "mois")}` : `au ${formaterDateSeance(ligne.date)}`}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-sm text-discret">Pas encore collecté</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        <div className="mt-3">
-          <Horodatage
-            iso={matieres.filter((m): m is MatiereRow => m !== null).map((m) => m.maj_le).sort().at(-1)}
-            source="Alpha Vantage (EIA, FRED)"
-            seuilHeures={72}
-          />
-        </div>
-      </Carte>
-    </div>
   );
 }

@@ -16,7 +16,7 @@ export function EnTete({ estAdmin }: { estAdmin: boolean }) {
             name="q"
             type="search"
             maxLength={60}
-            placeholder="Rechercher un actif, une entreprise, un mot-clé…"
+            placeholder="Rechercher un actif ou un mot-clé…"
             className="w-full rounded-lg border border-bordure bg-surface px-3 py-1.5 text-sm placeholder:text-discret focus:border-accent/60"
           />
         </form>

@@ -3,6 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { appelerFonction } from "@/lib/fonctions";
+import { CLASSES } from "@/lib/sources";
 import { supabaseUtilisateur } from "@/lib/supabase";
 
 // Toutes les écritures passent par le jeton Clerk de l'utilisateur : la RLS garantit
@@ -90,4 +91,15 @@ export async function validerBiais(biaisId: string, decision: "valide" | "rejete
   if (error) return { ok: false, message: `Décision non enregistrée : ${error.message}` };
   revalidatePath("/");
   return { ok: true, message: decision === "valide" ? "Biais validé." : "Biais rejeté." };
+}
+
+// Classes d'actifs affichées dans le moniteur : propres à chaque utilisateur.
+export async function choisirClasses(classes: string[]): Promise<Retour> {
+  const userId = await utilisateur();
+  const valides = CLASSES.map((c) => c.cle as string).filter((c) => classes.includes(c));
+  const supabase = await supabaseUtilisateur();
+  const { error } = await supabase.from("parametres_utilisateur").update({ classes_affichees: valides }).eq("clerk_user_id", userId);
+  if (error) return { ok: false, message: `Choix non enregistré : ${error.message}` };
+  revalidatePath("/");
+  return { ok: true, message: "Choix enregistré." };
 }

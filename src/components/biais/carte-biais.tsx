@@ -9,11 +9,11 @@ import type { BiaisAffiche, FacteurBiais } from "@/lib/biais";
 const TONS = { haussier: "hausse", baissier: "baisse", neutre: "neutre" } as const;
 const LIBELLES = { haussier: "Haussier", baissier: "Baissier", neutre: "Neutre" } as const;
 const SOURCES: Record<string, string> = {
-  "fred:SP500": "FRED (SP500)",
-  "fred:NASDAQ100": "FRED (NASDAQ100)",
-  "alpha_vantage:TREASURY_YIELD": "Alpha Vantage (Trésor US)",
+  "fred:SP500": "FRED (S&P 500)",
+  "fred:NASDAQ100": "FRED (Nasdaq-100)",
+  "fred:DGS10": "FRED (Trésor US 10 ans)",
 };
-const libelleSource = (s: string) => SOURCES[s] ?? s.replace("alpha_vantage", "Alpha Vantage");
+const libelleSource = (s: string) => SOURCES[s] ?? s;
 const points = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.round(Math.abs(v) * 100)}`;
 
 // Jauge de -100 à +100 : zone neutre au centre, remplissage depuis le milieu.

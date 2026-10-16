@@ -7,7 +7,7 @@
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
 export const REGLES_BIAIS = {
-  version: "2026-10-16",
+  version: "2026-10-17",
 
   // Conversion du score (entre -1 et +1) en biais.
   seuils: { haussier: 0.2, baissier: -0.2 },
@@ -19,15 +19,15 @@ export const REGLES_BIAIS = {
   indices: {
     SPX: {
       libelle: "S&P 500",
-      poids: { tendance: 0.35, taux: 0.25, macro: 0.2, flux: 0.2 },
-      // Entreprises dont les flux d'initiés et d'institutions sont pris en compte (null = toutes celles suivies).
-      entreprises: null as string[] | null,
+      poids: { tendance: 0.35, taux: 0.2, macro: 0.15, risque: 0.3 },
+      // Indice de volatilité implicite propre à l'indice.
+      volatilite: "VIX",
     },
     NDX: {
       libelle: "Nasdaq-100",
       // Les valeurs technologiques réagissent davantage aux taux longs.
-      poids: { tendance: 0.35, taux: 0.3, macro: 0.15, flux: 0.2 },
-      entreprises: ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "COST", "NFLX"] as string[] | null,
+      poids: { tendance: 0.35, taux: 0.25, macro: 0.1, risque: 0.3 },
+      volatilite: "VXN",
     },
   },
 
@@ -58,21 +58,30 @@ export const REGLES_BIAIS = {
     fenetreJours: 45,
     indicateurs: {
       CPI: { libelle: "Inflation", sens: -1, ecartPlein: 0.3, unite: "pt" },
+      CORE_CPI: { libelle: "Inflation sous-jacente", sens: -1, ecartPlein: 0.2, unite: "pt" },
+      CORE_PCE: { libelle: "PCE sous-jacent", sens: -1, ecartPlein: 0.2, unite: "pt" },
+      PPI: { libelle: "Prix à la production", sens: -1, ecartPlein: 1, unite: "pt" },
       UNEMPLOYMENT: { libelle: "Chômage", sens: -1, ecartPlein: 0.2, unite: "pt" },
       NONFARM_PAYROLL: { libelle: "Emplois créés", sens: 1, ecartPlein: 100, unite: "k" },
+      JOBLESS_CLAIMS: { libelle: "Inscriptions au chômage", sens: -1, ecartPlein: 25, unite: "k" },
+      RETAIL_SALES: { libelle: "Ventes au détail", sens: 1, ecartPlein: 0.5, unite: "pt" },
       REAL_GDP: { libelle: "Croissance du PIB", sens: 1, ecartPlein: 1, unite: "pt" },
     } as Record<string, { libelle: string; sens: 1 | -1; ecartPlein: number; unite: "pt" | "k" }>,
   },
 
-  // Flux nets des initiés (formulaires 4, date de dépôt) et des institutions (13F déposés).
-  flux: {
-    joursRecents: 7,
-    semainesReference: 13,
-    zPlein: 2, // flux net à 2 écarts-types de la moyenne hebdomadaire -> note ±1
-    partInities: 0.5,
-    variationPleineInstitutionsPct: 2, // +2 % de titres détenus en net -> note +1
+  // Appétit pour le risque : volatilité implicite (VIX ou VXN) et spread de crédit à haut
+  // rendement. Une volatilité au-dessus de sa médiane d'un an ou un spread qui s'écarte = baissier.
+  risque: {
+    seancesVariation: 5,
+    joursMediane: 365,
+    ecartPleinVolPts: 8, // volatilité 8 points au-dessus de sa médiane -> note -1
+    variationPleineVolPts: 5, // +5 points en 5 séances -> note -1
+    credit: "HY",
+    variationPleineCreditPts: 0.4, // spread +0,40 pt en 5 séances -> note -1
+    partVolatilite: 0.6,
+    ageMaxJours: 7,
   },
 };
 
 export type CleIndice = keyof typeof REGLES_BIAIS.indices;
-export type CleFacteur = "tendance" | "taux" | "macro" | "flux";
+export type CleFacteur = "tendance" | "taux" | "macro" | "risque";

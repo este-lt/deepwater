@@ -27,8 +27,8 @@ export function SectionBiais({ etat }: { etat: EtatBiais }) {
         <div className="flex flex-col gap-3">
           <p className="rounded-lg border border-alerte/30 bg-alerte-doux px-3 py-2 text-sm text-alerte">{MENTION_BIAIS}</p>
           <p className="text-xs text-attenue">
-            Calculé une seule fois pour tous les utilisateurs, uniquement à partir des données déjà en base (cours, taux,
-            publications macro, flux d&apos;initiés et d&apos;institutions). Votre validation ou votre rejet n&apos;est visible que par vous.
+            Calculé une fois pour tous à partir des données en base : tendance, taux longs, surprise macro, volatilité et crédit.
+            Votre validation n&apos;est visible que par vous.
             {etat.autoActif ? " Calcul automatique activé : chaque jour ouvré à 8 h 30, heure de New York." : " Calcul automatique coupé pour votre compte."}
           </p>
         </div>

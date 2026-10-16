@@ -10,8 +10,8 @@ export function SectionMacro({ indicateurs }: { indicateurs: IndicateurAffiche[]
   return (
     <Carte
       titre="Macroéconomie américaine"
-      sousTitre="Dernières publications officielles (Fed, BLS, BEA). Le sens de variation n'est pas un jugement."
-      pied={<Horodatage iso={majLe} source="Alpha Vantage (séries FRED, BLS, BEA)" seuilHeures={24 * 8} />}
+      sousTitre="Dernières publications officielles. La flèche indique le sens de variation, pas un jugement."
+      pied={<Horodatage iso={majLe} source="FRED (BLS, BEA, ministère du Travail)" seuilHeures={24 * 8} />}
     >
       <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,11.5rem),1fr))]">
         {indicateurs.map((i) => (

@@ -1,13 +1,12 @@
 // deno test supabase/functions/calcul-biais
 import {
   combiner,
-  facteurFlux,
   facteurMacro,
+  facteurRisque,
   facteurTaux,
   facteurTendance,
   type PointTaux,
   seanceVisee,
-  type TransactionInitie,
 } from "./facteurs.ts";
 
 function egal<T>(libelle: string, reel: T, attendu: T) {
@@ -55,20 +54,18 @@ Deno.test("macro : sens par indicateur et fenêtre de fraîcheur", () => {
   egal("trop ancienne", facteurMacro("SPX", [pub("CPI", 0.3, "2026-08-01")], "2026-10-16", "av").statut, "indisponible");
 });
 
-Deno.test("flux : comparaison à la moyenne de 13 semaines, filtre Nasdaq-100", () => {
-  const t: TransactionInitie[] = [];
-  // 13 semaines de ventes de 100 à 140 M$, puis une semaine récente à 300 M$ de ventes.
-  for (let k = 1; k <= 13; k++) {
-    const date = new Date(Date.parse("2026-10-16") - (7 * k + 1) * 86_400_000).toISOString().slice(0, 10);
-    t.push({ entreprise: "AAPL", code: "S", montant: (100 + (k % 5) * 10) * 1e6, date_depot: date });
-  }
-  t.push({ entreprise: "AAPL", code: "S", montant: 300e6, date_depot: "2026-10-14" });
-  t.push({ entreprise: "JPM", code: "P", montant: 5e9, date_depot: "2026-10-14" });
-  const ndx = facteurFlux("NDX", t, [], "2026-10-16");
-  egal("ventes inhabituelles -> -1", ndx.note, -1);
-  const spx = facteurFlux("SPX", t, [], "2026-10-16");
-  egal("achat JPM compté pour le S&P 500", spx.note, 1);
-  if (!ndx.texte.includes("aucune déclaration 13F")) throw new Error(ndx.texte);
+Deno.test("risque : volatilité au-dessus de sa médiane et spread qui s'écarte = baissier", () => {
+  const jours = (n: number) => new Date(Date.parse("2026-10-16") - n * 86_400_000).toISOString().slice(0, 10);
+  // 300 jours de VIX à 15, puis 6 séances qui montent jusqu'à 28.
+  const vix: PointTaux[] = Array.from({ length: 300 }, (_, i) => ({ date: jours(306 - i), taux: 15 }));
+  [17, 19, 21, 24, 26, 28].forEach((v, i) => vix.push({ date: jours(6 - i), taux: v }));
+  const hy: PointTaux[] = Array.from({ length: 10 }, (_, i) => ({ date: jours(10 - i), taux: 3 + i * 0.1 }));
+  const f = facteurRisque("SPX", vix, hy, "2026-10-16");
+  // Vol : -(0,5 x borner(13/8) + 0,5 x borner(11/5)) = -1 ; crédit : +0,5 pt -> -1.
+  egal("note", f.note, -1);
+  if (!f.texte.includes("VIX à 28,00")) throw new Error(f.texte);
+  egal("NDX utilise le VXN", facteurRisque("NDX", vix, hy, "2026-10-16").source.includes("VXN"), true);
+  egal("données trop anciennes", facteurRisque("SPX", vix, hy, "2026-11-30").statut, "indisponible");
 });
 
 Deno.test("synthèse : facteur indisponible retiré, tendance obligatoire, raisons", () => {

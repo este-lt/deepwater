@@ -1,12 +1,8 @@
 // Traitements par type de donnée Alpha Vantage : chaque "cible" transforme une
-// réponse validée en lignes de la base. Les étapes suivantes en ajoutent.
-import { extraireSerieData, extraireSerieQuotidienne } from "../_shared/alpha-vantage.ts";
-import { enregistrerArticles, type ArticleRetenu } from "../_shared/articles.ts";
-import { enregistrerPublication } from "../_shared/calendrier.ts";
-import { classerArticle } from "../_shared/filtre-actualites.ts";
+// réponse validée en lignes de la base. Alpha Vantage ne sert plus qu'à l'or et à
+// l'argent (et aux indices en cas d'abonnement premium) : le reste vient de FRED.
+import { extraireSerieQuotidienne } from "../_shared/alpha-vantage.ts";
 import { enregistrerPrix } from "../_shared/prix.ts";
-import { extraitCourt, urlCanonique } from "../_shared/rss.ts";
-import { admin } from "../_shared/supabase.ts";
 
 export interface Collecte {
   id: string;
@@ -21,215 +17,31 @@ export interface Collecte {
 
 type Traitement = (collecte: Collecte, donnees: Record<string, unknown>) => Promise<string>;
 
-// "None", "", "-" -> null ; jamais de valeur inventée.
-const nombre = (v: unknown): number | null => {
-  if (v === undefined || v === null || v === "" || v === "None" || v === "-") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
-
-type Rapport = Record<string, string>;
-
-// Séries longues (taux quotidiens depuis 1962...) : 3 ans au premier passage, 60 jours ensuite.
-async function fenetreDepuis(table: "taux_tresor" | "indicateurs_macro" | "matieres_premieres", filtre: [string, string]): Promise<string> {
-  const { count, error } = await admin().from(table).select("id", { count: "exact", head: true }).eq(filtre[0], filtre[1]);
-  if (error) throw new Error(`Lecture de ${table} impossible : ${error.message}`);
-  const jours = (count ?? 0) > 0 ? 60 : 3 * 366;
-  return new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
-}
-
-const derniere = <T extends { date: string }>(points: T[]) => points[points.length - 1];
-
-// Écrit une partie des états financiers (chaque endpoint ne remplit que ses colonnes),
-// puis recalcule les ratios de l'entreprise.
-async function enregistrerEtats(
-  symbole: string,
-  donnees: Record<string, unknown>,
-  colonnes: (r: Rapport) => Record<string, number | null>,
-): Promise<string> {
-  const lignes: Record<string, unknown>[] = [];
-  for (const [cle, periode] of [["annualReports", "annuel"], ["quarterlyReports", "trimestriel"]] as const) {
-    for (const r of (donnees[cle] as Rapport[] | undefined) ?? []) {
-      if (!r.fiscalDateEnding) continue;
-      lignes.push({
-        entreprise: symbole,
-        date_cloture: r.fiscalDateEnding,
-        periode,
-        devise: r.reportedCurrency ?? null,
-        source_donnee: "alpha_vantage",
-        ...colonnes(r),
-      });
-    }
-  }
-  if (lignes.length === 0) throw new Error("Aucun état financier dans la réponse.");
-  const { error } = await admin().from("fondamentales").upsert(lignes, { onConflict: "entreprise,date_cloture,periode" });
-  if (error) throw new Error(`Écriture des fondamentales impossible : ${error.message}`);
-  const { error: erreurRatios } = await admin().rpc("recalculer_ratios", { p_entreprise: symbole });
-  if (erreurRatios) throw new Error(`Calcul des ratios impossible : ${erreurRatios.message}`);
-  return `${lignes.length} périodes`;
-}
+const HISTORIQUE_JOURS = 10 * 366;
 
 export const CIBLES: Record<string, Traitement> = {
+  // INDEX_DATA (abonnement premium uniquement).
   async prix_quotidiens(collecte, donnees) {
-    if (!collecte.ticker_id) throw new Error("Collecte de prix sans ticker.");
+    if (!collecte.ticker_id) throw new Error("Collecte de prix sans instrument.");
     const barres = extraireSerieQuotidienne(donnees);
     if (barres.length === 0) throw new Error("Série de prix vide ou format inattendu.");
-    const fonction = String(collecte.parametres.function ?? "");
-    const { lignes } = await enregistrerPrix(collecte.ticker_id, barres, `alpha_vantage:${fonction}`);
-    const derniere = barres[barres.length - 1];
-    return `${lignes} séances, dernière clôture ${derniere.cloture} (${derniere.date})`;
+    const { lignes } = await enregistrerPrix(collecte.ticker_id, barres, `alpha_vantage:${String(collecte.parametres.function)}`);
+    const d = barres[barres.length - 1];
+    return `${lignes} séances, dernière clôture ${d.cloture} (${d.date})`;
   },
 
-  compte_resultat(collecte, donnees) {
-    return enregistrerEtats(String(collecte.parametres.symbol), donnees, (r) => ({
-      chiffre_affaires: nombre(r.totalRevenue),
-      resultat_net: nombre(r.netIncome),
-    }));
-  },
-
-  bilan(collecte, donnees) {
-    return enregistrerEtats(String(collecte.parametres.symbol), donnees, (r) => ({
-      capitaux_propres: nombre(r.totalShareholderEquity),
-      dette_totale: nombre(r.shortLongTermDebtTotal) ??
-        (nombre(r.longTermDebt) !== null || nombre(r.shortTermDebt) !== null
-          ? (nombre(r.longTermDebt) ?? 0) + (nombre(r.shortTermDebt) ?? 0)
-          : null),
-      actions_en_circulation: nombre(r.commonStockSharesOutstanding),
-    }));
-  },
-
-  flux_tresorerie(collecte, donnees) {
-    return enregistrerEtats(String(collecte.parametres.symbol), donnees, (r) => ({
-      flux_tresorerie_operationnel: nombre(r.operatingCashflow),
-    }));
-  },
-
-  async taux_tresor(collecte, donnees) {
-    const maturite = String(collecte.parametres.maturity);
-    const { points } = extraireSerieData(donnees);
-    if (points.length === 0) throw new Error("Série de taux vide.");
-    const depuis = await fenetreDepuis("taux_tresor", ["maturite", maturite]);
-    const lignes = points.filter((p) => p.date >= depuis).map((p) => ({
-      date: p.date,
-      maturite,
-      taux: p.valeur,
-      source_donnee: "alpha_vantage:TREASURY_YIELD",
-      maj_le: new Date().toISOString(),
-    }));
-    const { error } = await admin().from("taux_tresor").upsert(lignes, { onConflict: "date,maturite" });
-    if (error) throw new Error(`Écriture des taux impossible : ${error.message}`);
-    const { error: erreurSpreads } = await admin().rpc("recalculer_spreads", { p_depuis: depuis });
-    if (erreurSpreads) throw new Error(`Calcul des écarts de taux impossible : ${erreurSpreads.message}`);
-    const d = derniere(points);
-    return `${lignes.length} jours, ${maturite} à ${d.valeur} % (${d.date})`;
-  },
-
-  async indicateur_macro(collecte, donnees) {
-    const indicateur = String(collecte.parametres.indicateur);
-    const { unite, points } = extraireSerieData(donnees);
-    if (points.length === 0) throw new Error("Série macro vide.");
-    const depuis = await fenetreDepuis("indicateurs_macro", ["indicateur", indicateur]);
-    const { data: avant } = await admin()
-      .from("indicateurs_macro")
-      .select("date")
-      .eq("indicateur", indicateur)
-      .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    // Séries mensuelles/trimestrielles : on garde 6 ans pour les variations sur un an.
-    const seuil = indicateur === "FEDERAL_FUNDS_RATE" ? depuis : new Date(Date.now() - 6 * 366 * 86_400_000).toISOString().slice(0, 10);
-    const lignes = points.filter((p) => p.date >= seuil).map((p) => ({
-      indicateur,
-      date: p.date,
-      valeur: p.valeur,
-      unite,
-      source_donnee: `alpha_vantage:${indicateur}`,
-      maj_le: new Date().toISOString(),
-    }));
-    const { error } = await admin().from("indicateurs_macro").upsert(lignes, { onConflict: "indicateur,date" });
-    if (error) throw new Error(`Écriture de ${indicateur} impossible : ${error.message}`);
-    const nouvelle = await enregistrerPublication(indicateur, points, avant?.date ?? null);
-    const d = derniere(points);
-    return `${lignes.length} points, dernier ${d.valeur} (${d.date})${nouvelle ? ", publication ajoutée au calendrier" : ""}`;
-  },
-
-  // Actualités Alpha Vantage : même filtre strict que les flux RSS.
-  async actualites(_collecte, donnees) {
-    const flux = (donnees.feed as Array<Record<string, unknown>> | undefined) ?? [];
-    if (!Array.isArray(donnees.feed)) throw new Error("Réponse d'actualités sans champ feed.");
-    const retenus: ArticleRetenu[] = [];
-    for (const a of flux) {
-      const titre = String(a.title ?? "");
-      const url = String(a.url ?? "");
-      const resume = String(a.summary ?? "");
-      if (!titre || !/^https?:\/\//.test(url)) continue;
-      const source = `${String(a.source ?? "Presse")} (via Alpha Vantage)`;
-      const decision = classerArticle({ source, titre, extrait: resume });
-      if (!decision.garder) continue;
-      // time_published : "20261016T141500" (heure de New York selon Alpha Vantage, traitée en UTC faute de précision).
-      const t = String(a.time_published ?? "");
-      const date = /^\d{8}T\d{4}/.test(t)
-        ? new Date(`${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}T${t.slice(9, 11)}:${t.slice(11, 13)}:00Z`)
-        : new Date();
-      retenus.push({
-        titre,
-        source,
-        url: urlCanonique(url),
-        date_publication: date.toISOString(),
-        extrait_court: extraitCourt(resume),
-        decision,
-        sentiment: nombre(a.overall_sentiment_score),
-      });
-    }
-    const nouveaux = await enregistrerArticles(retenus);
-    return `${flux.length} articles lus, ${retenus.length} retenus par le filtre, ${nouveaux} nouveaux`;
-  },
-
-  async matiere_premiere(collecte, donnees) {
-    const nom = String(collecte.parametres.nom);
-    const { unite, points } = extraireSerieData(donnees);
-    if (points.length === 0) throw new Error("Série de prix vide.");
-    const depuis = await fenetreDepuis("matieres_premieres", ["nom", nom]);
-    // Les 3 ans chargés au premier passage permettent la variation sur 1 an.
-    const lignes = points.filter((p) => p.date >= depuis).map((p) => ({
-      nom,
-      date: p.date,
-      prix: p.valeur,
-      unite,
-      source_donnee: `alpha_vantage:${nom}`,
-      maj_le: new Date().toISOString(),
-    }));
-    const { error } = await admin().from("matieres_premieres").upsert(lignes, { onConflict: "nom,date" });
-    if (error) throw new Error(`Écriture de ${nom} impossible : ${error.message}`);
-    const { error: erreurVar } = await admin().rpc("recalculer_variations_matieres", { p_nom: nom });
-    if (erreurVar) throw new Error(`Calcul des variations impossible : ${erreurVar.message}`);
-    const d = derniere(points);
-    return `${lignes.length} points, ${d.valeur} ${unite ?? ""} (${d.date})`;
-  },
-
-  // Aperçu : ratios publiés par Alpha Vantage à la date du dernier trimestre (ligne "instantane").
-  async apercu_entreprise(collecte, donnees) {
-    const symbole = String(collecte.parametres.symbol);
-    const dateRef = typeof donnees.LatestQuarter === "string" ? donnees.LatestQuarter : null;
-    if (!dateRef) throw new Error("Aperçu sans date de référence (LatestQuarter).");
-    const { error } = await admin().from("fondamentales").upsert(
-      {
-        entreprise: symbole,
-        date_cloture: dateRef,
-        periode: "instantane",
-        devise: typeof donnees.Currency === "string" ? donnees.Currency : null,
-        per: nombre(donnees.PERatio),
-        roe: nombre(donnees.ReturnOnEquityTTM),
-        marge_nette: nombre(donnees.ProfitMargin),
-        bpa: nombre(donnees.EPS),
-        actions_en_circulation: nombre(donnees.SharesOutstanding),
-        chiffre_affaires: nombre(donnees.RevenueTTM),
-        source_donnee: "alpha_vantage:OVERVIEW",
-        maj_le: new Date().toISOString(),
-      },
-      { onConflict: "entreprise,date_cloture,periode" },
-    );
-    if (error) throw new Error(`Écriture de l'aperçu impossible : ${error.message}`);
-    return `aperçu au ${dateRef} (PER ${donnees.PERatio}, ROE ${donnees.ReturnOnEquityTTM})`;
+  // GOLD_SILVER_HISTORY : { nominal, data: [{ date, price }] }.
+  async metal(collecte, donnees) {
+    if (!collecte.ticker_id) throw new Error("Collecte de métal sans instrument.");
+    const seuil = new Date(Date.now() - HISTORIQUE_JOURS * 86_400_000).toISOString().slice(0, 10);
+    const barres = ((donnees.data as { date?: string; price?: string }[] | undefined) ?? [])
+      .map((p) => ({ date: String(p.date ?? "").slice(0, 10), cloture: Number(p.price) }))
+      .filter((p) => p.date >= seuil && Number.isFinite(p.cloture) && p.cloture > 0)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((p) => ({ ...p, ouverture: null, plus_haut: null, plus_bas: null, volume: null }));
+    if (barres.length === 0) throw new Error("Historique de métal vide ou format inattendu.");
+    const { lignes } = await enregistrerPrix(collecte.ticker_id, barres, `alpha_vantage:${String(collecte.parametres.symbol)}`);
+    const d = barres[barres.length - 1];
+    return `${lignes} jours, dernier ${d.cloture} $ (${d.date})`;
   },
 };
