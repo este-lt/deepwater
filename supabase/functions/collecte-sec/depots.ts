@@ -69,13 +69,16 @@ export function resumerDepot(formulaire: string, rubriques: string, dateRapport:
   }
 }
 
+// Fenêtres de collecte : rapports périodiques sur 400 jours (dernier 10-K inclus),
+// formulaires 4 sur 100 jours (base de comparaison du flux d'initiés), le reste sur 60 jours.
+const FENETRE_JOURS: Record<string, number> = { "10-K": 400, "10-Q": 400, "4": 100 };
+
 export async function collecterDepots(
   entreprises: EntrepriseSec[],
-  joursRecents = 60,
-): Promise<{ nouveaux: number; secteurs: Record<string, string>; formulaires4: { symbole: string; cik: string; numero: string; date: string; document: string }[] }> {
-  const limite = new Date(Date.now() - joursRecents * 86_400_000).toISOString().slice(0, 10);
+): Promise<{ nouveaux: number; secteurs: Record<string, string> }> {
+  const jourLimite = (jours: number) => new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
+  const limiteMax = jourLimite(Math.max(...Object.values(FENETRE_JOURS)));
   const secteurs: Record<string, string> = {};
-  const formulaires4: { symbole: string; cik: string; numero: string; date: string; document: string }[] = [];
   let nouveaux = 0;
 
   for (const e of entreprises) {
@@ -86,12 +89,10 @@ export async function collecterDepots(
     const lignes: Record<string, unknown>[] = [];
     for (let i = 0; i < rec.accessionNumber.length; i++) {
       const date = rec.filingDate[i];
-      if (date < limite) break; // tri du plus récent au plus ancien
+      if (date < limiteMax) break; // tri du plus récent au plus ancien
       const formulaire = rec.form[i];
       if (!FORMULAIRES_SUIVIS.has(formulaire)) continue;
-      if (formulaire === "4" || formulaire === "4/A") {
-        formulaires4.push({ symbole: e.symbole, cik: e.cik, numero: rec.accessionNumber[i], date, document: rec.primaryDocument[i] });
-      }
+      if (date < jourLimite(FENETRE_JOURS[formulaire.replace("/A", "")] ?? 60)) continue;
       lignes.push({
         entreprise: e.symbole,
         cik: e.cik,
@@ -113,5 +114,5 @@ export async function collecterDepots(
       nouveaux += data?.length ?? 0;
     }
   }
-  return { nouveaux, secteurs, formulaires4 };
+  return { nouveaux, secteurs };
 }

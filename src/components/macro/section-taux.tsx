@@ -76,7 +76,7 @@ export function SectionTaux({ taux, matieres }: { taux: EtatTaux; matieres: (Mat
                     <p className="text-xs text-attenue">{p.libelle}</p>
                     <p className="chiffres font-semibold">{formaterNombre(p.taux, 2)} %</p>
                     {p.variation5j !== null && (
-                      <p className={`chiffres text-xs ${p.variation5j > 0 ? "text-hausse" : p.variation5j < 0 ? "text-baisse" : "text-attenue"}`}>
+                      <p className="chiffres text-xs text-attenue">
                         {p.variation5j > 0 ? "+" : p.variation5j < 0 ? "−" : ""}
                         {formaterNombre(Math.abs(p.variation5j * 100), 0)} pb / 5 j
                       </p>

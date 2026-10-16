@@ -301,6 +301,18 @@ export type Database = {
       est_admin: { Args: never; Returns: boolean };
       sante: { Args: never; Returns: Json };
       reserver_calcul_manuel: { Args: never; Returns: Json };
+      flux_inities_agreges: {
+        Args: { p_jours?: number };
+        Returns: { entreprise: string; nom: string; secteur: string; achats: number; ventes: number; net: number; nb_achats: number; nb_ventes: number; derniere_date: string | null }[];
+      };
+      flux_inities_par_secteur: {
+        Args: { p_jours?: number };
+        Returns: { secteur: string; achats: number; ventes: number; net: number; nb_entreprises: number }[];
+      };
+      positions_institutions_agregees: {
+        Args: never;
+        Returns: { entreprise: string; nom: string; secteur: string; date_rapport: string; parts_totales: number; valeur_usd: number; variation_parts: number | null; nb_hausse: number; nb_baisse: number; nb_institutions: number }[];
+      };
       admin_etat_cron: {
         Args: never;
         Returns: {
