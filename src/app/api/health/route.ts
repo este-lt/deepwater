@@ -11,6 +11,7 @@ export async function GET() {
       {
         statut: "ok",
         service: "deepwater",
+        version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
         base: "ok",
         heure: new Date().toISOString(),
         derniere_tache_reussie: sante.derniere_tache_reussie ?? null,
