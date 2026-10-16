@@ -71,3 +71,29 @@ export function Horodatage({ iso, source, seuilHeures, className = "" }: PropsHo
     </span>
   );
 }
+
+// Jours restants avant un instant, comptés en jours calendaires du fuseau de l'utilisateur.
+export function Echeance({ iso }: { iso: string }) {
+  const minute = useMinuteCourante();
+  if (minute === null) return null;
+  const debutJour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const jours = Math.round((debutJour(new Date(iso)) - debutJour(new Date(minute * 60_000))) / 86_400_000);
+  const texte = jours <= 0 ? "aujourd'hui" : jours === 1 ? "demain" : `dans ${jours} j`;
+  return <span className={jours <= 1 ? "text-alerte" : "text-attenue"}>{texte}</span>;
+}
+
+// Heure d'un article : relative jusqu'à 24 h, puis date et heure locales.
+export function HeureArticle({ iso }: { iso: string }) {
+  const minute = useMinuteCourante();
+  const date = new Date(iso);
+  if (minute === null) return <time dateTime={iso}>{iso.slice(0, 16).replace("T", " ")} UTC</time>;
+  const maintenant = minute * 60_000;
+  const texte = maintenant - date.getTime() < 24 * 3_600_000
+    ? formaterRelatif(date.getTime(), maintenant)
+    : new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
+  return (
+    <time dateTime={iso} title={FORMAT_ABSOLU.format(date)}>
+      {texte}
+    </time>
+  );
+}

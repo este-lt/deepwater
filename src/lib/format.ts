@@ -32,3 +32,25 @@ export function tonVariation(valeur: number | null | undefined): "hausse" | "bai
   if (!valeur) return "neutre";
   return valeur > 0 ? "hausse" : "baisse";
 }
+
+// Instant UTC d'une heure locale officielle ("2026-10-28", "14:00", "America/New_York"),
+// changement d'heure compris : on mesure le décalage du fuseau à cet instant précis.
+export function instantFuseau(date: string, heure: string, fuseau: string): string {
+  const naif = Date.parse(`${date}T${heure}:00Z`);
+  const format = new Intl.DateTimeFormat("en-US", {
+    timeZone: fuseau,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const decalage = (t: number) => {
+    const p = Object.fromEntries(format.formatToParts(new Date(t)).map((x) => [x.type, Number(x.value)]));
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - t;
+  };
+  // Deux passes : la seconde corrige le cas où l'estimation tombe de l'autre côté d'un changement d'heure.
+  const estimation = naif - decalage(naif);
+  return new Date(naif - decalage(estimation)).toISOString();
+}

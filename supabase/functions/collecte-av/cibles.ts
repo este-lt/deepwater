@@ -1,7 +1,11 @@
 // Traitements par type de donnée Alpha Vantage : chaque "cible" transforme une
 // réponse validée en lignes de la base. Les étapes suivantes en ajoutent.
 import { extraireSerieData, extraireSerieQuotidienne } from "../_shared/alpha-vantage.ts";
+import { enregistrerArticles, type ArticleRetenu } from "../_shared/articles.ts";
+import { enregistrerPublication } from "../_shared/calendrier.ts";
+import { classerArticle } from "../_shared/filtre-actualites.ts";
 import { enregistrerPrix } from "../_shared/prix.ts";
+import { extraitCourt, urlCanonique } from "../_shared/rss.ts";
 import { admin } from "../_shared/supabase.ts";
 
 export interface Collecte {
@@ -125,6 +129,13 @@ export const CIBLES: Record<string, Traitement> = {
     const { unite, points } = extraireSerieData(donnees);
     if (points.length === 0) throw new Error("Série macro vide.");
     const depuis = await fenetreDepuis("indicateurs_macro", ["indicateur", indicateur]);
+    const { data: avant } = await admin()
+      .from("indicateurs_macro")
+      .select("date")
+      .eq("indicateur", indicateur)
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     // Séries mensuelles/trimestrielles : on garde 6 ans pour les variations sur un an.
     const seuil = indicateur === "FEDERAL_FUNDS_RATE" ? depuis : new Date(Date.now() - 6 * 366 * 86_400_000).toISOString().slice(0, 10);
     const lignes = points.filter((p) => p.date >= seuil).map((p) => ({
@@ -137,8 +148,41 @@ export const CIBLES: Record<string, Traitement> = {
     }));
     const { error } = await admin().from("indicateurs_macro").upsert(lignes, { onConflict: "indicateur,date" });
     if (error) throw new Error(`Écriture de ${indicateur} impossible : ${error.message}`);
+    const nouvelle = await enregistrerPublication(indicateur, points, avant?.date ?? null);
     const d = derniere(points);
-    return `${lignes.length} points, dernier ${d.valeur} (${d.date})`;
+    return `${lignes.length} points, dernier ${d.valeur} (${d.date})${nouvelle ? ", publication ajoutée au calendrier" : ""}`;
+  },
+
+  // Actualités Alpha Vantage : même filtre strict que les flux RSS.
+  async actualites(_collecte, donnees) {
+    const flux = (donnees.feed as Array<Record<string, unknown>> | undefined) ?? [];
+    if (!Array.isArray(donnees.feed)) throw new Error("Réponse d'actualités sans champ feed.");
+    const retenus: ArticleRetenu[] = [];
+    for (const a of flux) {
+      const titre = String(a.title ?? "");
+      const url = String(a.url ?? "");
+      const resume = String(a.summary ?? "");
+      if (!titre || !/^https?:\/\//.test(url)) continue;
+      const source = `${String(a.source ?? "Presse")} (via Alpha Vantage)`;
+      const decision = classerArticle({ source, titre, extrait: resume });
+      if (!decision.garder) continue;
+      // time_published : "20261016T141500" (heure de New York selon Alpha Vantage, traitée en UTC faute de précision).
+      const t = String(a.time_published ?? "");
+      const date = /^\d{8}T\d{4}/.test(t)
+        ? new Date(`${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}T${t.slice(9, 11)}:${t.slice(11, 13)}:00Z`)
+        : new Date();
+      retenus.push({
+        titre,
+        source,
+        url: urlCanonique(url),
+        date_publication: date.toISOString(),
+        extrait_court: extraitCourt(resume),
+        decision,
+        sentiment: nombre(a.overall_sentiment_score),
+      });
+    }
+    const nouveaux = await enregistrerArticles(retenus);
+    return `${flux.length} articles lus, ${retenus.length} retenus par le filtre, ${nouveaux} nouveaux`;
   },
 
   async matiere_premiere(collecte, donnees) {

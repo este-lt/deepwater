@@ -301,6 +301,7 @@ export type Database = {
       est_admin: { Args: never; Returns: boolean };
       sante: { Args: never; Returns: Json };
       reserver_calcul_manuel: { Args: never; Returns: Json };
+      derniere_reussite: { Args: { p_tache: string }; Returns: string | null };
       flux_inities_agreges: {
         Args: { p_jours?: number };
         Returns: { entreprise: string; nom: string; secteur: string; achats: number; ventes: number; net: number; nb_achats: number; nb_ventes: number; derniere_date: string | null }[];

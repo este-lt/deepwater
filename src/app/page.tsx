@@ -6,12 +6,14 @@ import { GraphiquePrix } from "@/components/marches/graphique-prix";
 import { SectionFlux } from "@/components/flux/section-flux";
 import { SectionMacro } from "@/components/macro/section-macro";
 import { SectionTaux } from "@/components/macro/section-taux";
+import { SectionCalendrier, SectionVeille } from "@/components/veille/section-veille";
 import { lireFlux } from "@/lib/flux";
 import { lireFiches } from "@/lib/fondamentales";
 import { lireMacro, lireMatieres, lireTaux } from "@/lib/macro";
 import { lireResumes } from "@/lib/marches";
 import { assurerProfil } from "@/lib/profil";
 import { supabaseUtilisateur } from "@/lib/supabase";
+import { lireCalendrier, lireVeille } from "@/lib/veille";
 
 export default async function TableauDeBord() {
   const etat = await assurerProfil();
@@ -31,7 +33,7 @@ export default async function TableauDeBord() {
   }
 
   const supabase = await supabaseUtilisateur();
-  const [indices, optionnels, fiches, taux, matieres, macro, flux] = await Promise.all([
+  const [indices, optionnels, fiches, taux, matieres, macro, flux, veille, calendrier] = await Promise.all([
     lireResumes(supabase, { prioritaires: true }),
     lireResumes(supabase, { classes: ["indice", "forex", "action"] }),
     lireFiches(supabase),
@@ -39,6 +41,8 @@ export default async function TableauDeBord() {
     lireMatieres(supabase),
     lireMacro(supabase),
     lireFlux(supabase),
+    lireVeille(supabase),
+    lireCalendrier(supabase),
   ]);
   const instrumentsGraphique = [...indices, ...optionnels].map((r) => ({ symbole: r.ticker.symbole, nom: r.ticker.nom }));
 
@@ -59,6 +63,10 @@ export default async function TableauDeBord() {
 
         <SectionTaux taux={taux} matieres={matieres} />
         <SectionMacro indicateurs={macro} />
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+          <SectionVeille veille={veille} />
+          <SectionCalendrier calendrier={calendrier} />
+        </div>
         <SectionFlux flux={flux} />
 
         <details open className="group rounded-carte border border-bordure bg-surface animate-apparition">
