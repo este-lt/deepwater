@@ -52,7 +52,8 @@ export function SectionCalendrier({ calendrier }: { calendrier: EtatCalendrier }
           <p className="text-xs text-attenue">
             Le consensus des économistes n&apos;est pas disponible gratuitement : l&apos;écart affiché compare chaque publication à la précédente.
           </p>
-          <Horodatage iso={calendrier.majLe} source="federalreserve.gov, ecb.europa.eu, Alpha Vantage" seuilHeures={24 * 8} />
+          <p className="text-xs text-discret">Dates des réunions : federalreserve.gov et ecb.europa.eu, relevées le 16 oct. 2026.</p>
+          <Horodatage iso={calendrier.majLe} source="statistiques Alpha Vantage (BLS, BEA)" seuilHeures={24 * 40} />
         </div>
       }
     >
