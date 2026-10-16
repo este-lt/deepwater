@@ -102,6 +102,12 @@ Les lots d'articles ne sont pas versionnés (droits des éditeurs).
   nouvelle période apparaît dans la série Alpha Vantage. La date affichée est le jour de
   détection, pas l'heure exacte de publication ; au tout premier chargement, la date de
   publication est inconnue et l'écran le dit.
+- **Calculs** : CPI = variation sur 1 an de l'indice (même mois de l'année précédente),
+  emplois = variation mensuelle en milliers, PIB = croissance trimestrielle annualisée,
+  chômage = taux publié. Les comparaisons se font par date : **octobre 2025 n'a jamais
+  été publié** pour le CPI et le chômage (shutdown fédéral), donc toute valeur qui en
+  dépend (CPI d'octobre 2026 sur 1 an, écart du chômage de novembre 2025) est
+  « indisponible » au lieu d'être calculée sur un autre mois.
 - **Consensus des économistes : indisponible.** Aucune source gratuite fiable. L'écart
   affiché compare chaque publication à la précédente, et c'est cette « surprise » que le
   biais quotidien utilise.
