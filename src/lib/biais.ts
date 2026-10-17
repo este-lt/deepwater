@@ -5,6 +5,8 @@ import type { BiaisRow, ValidationRow } from "./types-supabase";
 export interface FacteurBiais {
   cle: string;
   libelle: string;
+  libelle_en?: string;
+  texte_en?: string;
   statut: "ok" | "indisponible";
   note: number | null;
   poids: number;

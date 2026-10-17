@@ -10,7 +10,8 @@
 // introductions en Bourse, listes de valeurs), la politique locale, l'opinion, les
 // conseils personnels, les faits divers.
 
-export type Categorie = "banque_centrale" | "statistique_macro" | "marche" | "politique_eco";
+// « geopolitique » : squawks seulement (voir squawks.ts).
+export type Categorie = "banque_centrale" | "statistique_macro" | "marche" | "politique_eco" | "geopolitique";
 
 export type Impact = "fort" | "moyen" | "faible";
 

@@ -105,8 +105,9 @@ servirTacheProtegee(async (corps) => {
         .eq("date", seance)
         .eq("statut", "actif")
         .maybeSingle();
-      const empreinte = (f: { cle: string; statut: string; note: number | null; texte: string }[]) =>
-        JSON.stringify(f.map((x) => [x.cle, x.statut, x.note, x.texte]));
+      // Le texte anglais compte aussi : un biais calculé avant le site bilingue est recalculé.
+      const empreinte = (f: { cle: string; statut: string; note: number | null; texte: string; texte_en?: string }[]) =>
+        JSON.stringify(f.map((x) => [x.cle, x.statut, x.note, x.texte, x.texte_en ?? ""]));
       if (actif && empreinte(actif.facteurs ?? []) === empreinte(r.facteurs)) {
         bilan[indice] = `${r.biais} (${r.score}), inchangé`;
         continue;

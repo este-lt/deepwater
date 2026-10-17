@@ -1,22 +1,24 @@
 import "server-only";
 import { type Frequence, moisAvant } from "./format";
+import { type Langue, localeDe } from "./i18n";
 import type { ClientSupabase } from "./supabase";
 import type { TauxRow } from "./types-supabase";
 
-export const MATURITES: { cle: TauxRow["maturite"]; libelle: string; annees: number }[] = [
-  { cle: "3month", libelle: "3 mois", annees: 0.25 },
-  { cle: "2year", libelle: "2 ans", annees: 2 },
-  { cle: "5year", libelle: "5 ans", annees: 5 },
-  { cle: "7year", libelle: "7 ans", annees: 7 },
-  { cle: "10year", libelle: "10 ans", annees: 10 },
-  { cle: "30year", libelle: "30 ans", annees: 30 },
+export const MATURITES: { cle: TauxRow["maturite"]; court: string; annees: number }[] = [
+  { cle: "3month", court: "3M", annees: 0.25 },
+  { cle: "2year", court: "2Y", annees: 2 },
+  { cle: "5year", court: "5Y", annees: 5 },
+  { cle: "7year", court: "7Y", annees: 7 },
+  { cle: "10year", court: "10Y", annees: 10 },
+  { cle: "30year", court: "30Y", annees: 30 },
 ];
 
 export interface EtatTaux {
   date: string | null;
   majLe: string | null;
   source: string | null;
-  points: { maturite: TauxRow["maturite"]; libelle: string; annees: number; taux: number; variation5j: number | null }[];
+  // taux1m : même maturité environ un mois plus tôt (21 séances), pour comparer les courbes.
+  points: { maturite: TauxRow["maturite"]; court: string; annees: number; taux: number; variation5j: number | null; taux1m: number | null }[];
   spread102: number | null;
   spread302: number | null;
   historiqueSpread: number[];
@@ -44,12 +46,14 @@ export async function lireTaux(supabase: ClientSupabase): Promise<EtatTaux> {
     const derniere = serie.at(-1);
     if (!derniere) return [];
     const ilYa5 = serie.at(-6);
+    const ilYa21 = serie.at(-22);
     return [{
       maturite: m.cle,
-      libelle: m.libelle,
+      court: m.court,
       annees: m.annees,
       taux: Number(derniere.taux),
       variation5j: ilYa5 ? Number(derniere.taux) - Number(ilYa5.taux) : null,
+      taux1m: ilYa21 ? Number(ilYa21.taux) : null,
     }];
   });
 
@@ -85,7 +89,8 @@ type Lecture = (periodesAvant: number) => number | null;
 
 interface DefinitionMacro {
   cle: string;
-  libelle: string;
+  fr: string;
+  en: string;
   frequence: Frequence;
   // Écart entre deux publications : en mois, ou "hebdo" (observation précédente).
   pas: number | "hebdo";
@@ -102,34 +107,35 @@ const surUnAn = (v: Lecture) => croissance(v(0), v(12));
 
 // Mêmes calculs que le calendrier (supabase/functions/_shared/calendrier.ts), séries FRED.
 const MACRO: DefinitionMacro[] = [
-  { cle: "CPI", libelle: "Inflation (CPI, sur 1 an)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
-  { cle: "CORE_CPI", libelle: "CPI sous-jacent (sur 1 an)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
-  { cle: "CORE_PCE", libelle: "PCE sous-jacent (sur 1 an)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
-  { cle: "PPI", libelle: "Prix à la production (sur 1 an)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
-  { cle: "UNEMPLOYMENT", libelle: "Taux de chômage", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: (v) => v(0) },
-  { cle: "NONFARM_PAYROLL", libelle: "Emplois créés (NFP)", frequence: "mois", pas: 1, unite: "k", decimales: 0, signe: true, calcul: (v) => ecart(v(0), v(1)) },
+  { cle: "CPI", fr: "Inflation (CPI, sur 1 an)", en: "CPI inflation (y/y)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
+  { cle: "CORE_CPI", fr: "CPI sous-jacent (sur 1 an)", en: "Core CPI (y/y)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
+  { cle: "CORE_PCE", fr: "PCE sous-jacent (sur 1 an)", en: "Core PCE (y/y)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
+  { cle: "PPI", fr: "Prix à la production (sur 1 an)", en: "Producer prices (y/y)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: surUnAn },
+  { cle: "UNEMPLOYMENT", fr: "Taux de chômage", en: "Unemployment rate", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: false, calcul: (v) => v(0) },
+  { cle: "NONFARM_PAYROLL", fr: "Emplois créés (NFP)", en: "Nonfarm payrolls", frequence: "mois", pas: 1, unite: "k", decimales: 0, signe: true, calcul: (v) => ecart(v(0), v(1)) },
   {
-    cle: "JOBLESS_CLAIMS", libelle: "Inscriptions au chômage", frequence: "semaine", pas: "hebdo", unite: "k", decimales: 0, signe: false,
+    cle: "JOBLESS_CLAIMS", fr: "Inscriptions au chômage", en: "Initial jobless claims", frequence: "semaine", pas: "hebdo", unite: "k", decimales: 0, signe: false,
     calcul: (v) => (v(0) === null ? null : v(0)! / 1000),
   },
-  { cle: "RETAIL_SALES", libelle: "Ventes au détail (sur 1 mois)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: true, calcul: (v) => croissance(v(0), v(1)) },
-  { cle: "REAL_GDP", libelle: "Croissance du PIB (annualisée)", frequence: "trimestre", pas: 3, unite: "%", decimales: 1, signe: false, calcul: (v) => croissance(v(0), v(3), 4) },
+  { cle: "RETAIL_SALES", fr: "Ventes au détail (sur 1 mois)", en: "Retail sales (m/m)", frequence: "mois", pas: 1, unite: "%", decimales: 1, signe: true, calcul: (v) => croissance(v(0), v(1)) },
+  { cle: "REAL_GDP", fr: "Croissance du PIB (annualisée)", en: "GDP growth (annualized)", frequence: "trimestre", pas: 3, unite: "%", decimales: 1, signe: false, calcul: (v) => croissance(v(0), v(3), 4) },
 ];
 
-const PRECEDENT: Record<Frequence, string> = {
-  jour: "la veille",
-  semaine: "la semaine précédente",
-  mois: "le mois précédent",
-  trimestre: "le trimestre précédent",
+const PRECEDENT: Record<Frequence, [string, string]> = {
+  jour: ["la veille", "previous day"],
+  semaine: ["la semaine précédente", "previous week"],
+  mois: ["le mois précédent", "previous month"],
+  trimestre: ["le trimestre précédent", "previous quarter"],
 };
 
-function ecrire(v: number, d: DefinitionMacro): string {
-  const nombre = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: d.decimales, maximumFractionDigits: d.decimales }).format(Math.abs(v));
+function ecrire(v: number, d: DefinitionMacro, langue: Langue): string {
+  const nombre = new Intl.NumberFormat(localeDe(langue), { minimumFractionDigits: d.decimales, maximumFractionDigits: d.decimales }).format(Math.abs(v));
   const signe = d.signe ? (v >= 0 ? "+" : "−") : v < 0 ? "−" : "";
-  return `${signe}${nombre} ${d.unite}`;
+  return `${signe}${nombre}${langue === "en" && d.unite === "%" ? "" : " "}${d.unite}`;
 }
 
-export async function lireMacro(supabase: ClientSupabase): Promise<IndicateurAffiche[]> {
+export async function lireMacro(supabase: ClientSupabase, langue: Langue): Promise<IndicateurAffiche[]> {
+  const en = langue === "en";
   const depuis = new Date(Date.now() - 30 * 31 * 86_400_000).toISOString().slice(0, 10);
   const { data, error } = await supabase
     .from("indicateurs_macro")
@@ -145,7 +151,7 @@ export async function lireMacro(supabase: ClientSupabase): Promise<IndicateurAff
     const serie = series.get(def.cle) ?? [];
     const derniere = serie.at(-1);
     if (!derniere) {
-      return { cle: def.cle, libelle: def.libelle, valeur: null, detail: null, date: null, frequence: def.frequence, majLe: null, absence: null, tendance: "neutre" as const };
+      return { cle: def.cle, libelle: en ? def.en : def.fr, valeur: null, detail: null, date: null, frequence: def.frequence, majLe: null, absence: null, tendance: "neutre" as const };
     }
     // Lecture par date (un mois jamais publié reste absent) ou par rang pour l'hebdomadaire.
     const parDate = new Map(serie.map((p) => [p.date, p.valeur]));
@@ -158,13 +164,15 @@ export async function lireMacro(supabase: ClientSupabase): Promise<IndicateurAff
     const delta = ecart(actuelle, precedente);
     return {
       cle: def.cle,
-      libelle: def.libelle,
-      valeur: actuelle === null ? null : ecrire(actuelle, def),
-      detail: precedente === null ? null : `${ecrire(precedente, def)} ${PRECEDENT[def.frequence]}`,
+      libelle: en ? def.en : def.fr,
+      valeur: actuelle === null ? null : ecrire(actuelle, def, langue),
+      detail: precedente === null ? null : `${ecrire(precedente, def, langue)} ${PRECEDENT[def.frequence][en ? 1 : 0]}`,
       date: derniere.date,
       frequence: def.frequence,
       majLe: derniere.maj_le,
-      absence: actuelle === null ? "Indisponible : la période de comparaison n'a pas été publiée" : null,
+      absence: actuelle === null
+        ? en ? "Unavailable: the comparison period was never published" : "Indisponible : la période de comparaison n'a pas été publiée"
+        : null,
       tendance: delta === null || Math.abs(delta) < 1e-9 ? "neutre" as const : delta > 0 ? "hausse" as const : "baisse" as const,
     };
   });

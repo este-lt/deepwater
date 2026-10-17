@@ -12,6 +12,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
 import { Horodatage } from "@/components/horodatage";
+import { useLangue } from "@/components/langue";
 import { CLASSES, libelleSource } from "@/lib/sources";
 
 // Même nom d'événement que le moniteur (un clic sur une ligne ouvre l'instrument ici).
@@ -34,16 +35,41 @@ interface Serie {
 }
 
 const PERIODES = [
-  { cle: "3m", libelle: "3M" },
-  { cle: "6m", libelle: "6M" },
-  { cle: "1a", libelle: "1A" },
-  { cle: "3a", libelle: "3A" },
-  { cle: "10a", libelle: "10A" },
+  { cle: "3m", fr: "3M", en: "3M" },
+  { cle: "6m", fr: "6M", en: "6M" },
+  { cle: "1a", fr: "1A", en: "1Y" },
+  { cle: "3a", fr: "3A", en: "3Y" },
+  { cle: "10a", fr: "10A", en: "10Y" },
 ] as const;
 
-const COULEURS = { accent: "#7c6cff", mm20: "#fbbf24", mm50: "#38bdf8", texte: "#8d94a7", grille: "rgba(255,255,255,0.05)" };
+const MM = { mm20: "#fbbf24", mm50: "#38bdf8" };
+
+// Couleurs du thème choisi (variables CSS posées sur <html>), lues au moment du rendu et
+// converties par le navigateur en « rgb(a)(…) », seule syntaxe comprise par le graphique.
+function couleursTheme() {
+  const temoin = document.createElement("span");
+  document.body.appendChild(temoin);
+  const lire = (nom: string) => {
+    temoin.style.color = `var(${nom})`;
+    return getComputedStyle(temoin).color;
+  };
+  const accent = lire("--color-accent");
+  const [r, g, b] = accent.match(/[\d.]+/g)?.map(Number) ?? [124, 108, 255];
+  const couleurs = {
+    accent,
+    accentHaut: `rgba(${r}, ${g}, ${b}, 0.28)`,
+    accentBas: `rgba(${r}, ${g}, ${b}, 0)`,
+    texte: lire("--color-attenue"),
+    grille: lire("--color-bordure"),
+    hausse: lire("--color-hausse"),
+    baisse: lire("--color-baisse"),
+  };
+  temoin.remove();
+  return couleurs;
+}
 
 export function GraphiquePrix({ instruments, initial }: { instruments: { symbole: string; nom: string; classe: string }[]; initial?: string }) {
+  const { langue, t, locale } = useLangue();
   const conteneur = useRef<HTMLDivElement>(null);
   const graphique = useRef<IChartApi | null>(null);
   const [symbole, setSymbole] = useState(initial ?? instruments[0]?.symbole ?? "");
@@ -81,15 +107,16 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
   // Rendu du graphique : zoom à la molette et au pincement, déplacement au glisser.
   useEffect(() => {
     if (!conteneur.current || !serie || serie.points.length === 0) return;
+    const COULEURS = couleursTheme();
     const chart = createChart(conteneur.current, {
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: COULEURS.texte,
-        fontFamily: "var(--font-geist-sans), system-ui, sans-serif",
+        fontFamily: getComputedStyle(document.body).fontFamily,
         attributionLogo: false,
       },
-      localization: { locale: "fr-FR" },
+      localization: { locale },
       grid: { vertLines: { color: COULEURS.grille }, horzLines: { color: COULEURS.grille } },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, rightOffset: 4 },
@@ -102,11 +129,11 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
     const ohlc = serie.points.every((p) => p.ouverture !== null && p.plus_haut !== null && p.plus_bas !== null);
     if (ohlc) {
       chart.addSeries(CandlestickSeries, {
-        upColor: "#34d399",
-        downColor: "#f87171",
+        upColor: COULEURS.hausse,
+        downColor: COULEURS.baisse,
         borderVisible: false,
-        wickUpColor: "#34d399",
-        wickDownColor: "#f87171",
+        wickUpColor: COULEURS.hausse,
+        wickDownColor: COULEURS.baisse,
       }).setData(
         serie.points.map((p) => ({
           time: p.date,
@@ -119,13 +146,13 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
     } else {
       chart.addSeries(AreaSeries, {
         lineColor: COULEURS.accent,
-        topColor: "rgba(124,108,255,0.28)",
-        bottomColor: "rgba(124,108,255,0)",
+        topColor: COULEURS.accentHaut,
+        bottomColor: COULEURS.accentBas,
         lineWidth: 2,
         priceLineVisible: false,
       }).setData(serie.points.map((p) => ({ time: p.date, value: p.cloture })));
     }
-    for (const [cle, couleur] of [["mm20", COULEURS.mm20], ["mm50", COULEURS.mm50]] as const) {
+    for (const [cle, couleur] of [["mm20", MM.mm20], ["mm50", MM.mm50]] as const) {
       chart.addSeries(LineSeries, {
         color: couleur,
         lineWidth: 1,
@@ -140,7 +167,7 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
       chart.remove();
       graphique.current = null;
     };
-  }, [serie]);
+  }, [serie, locale]);
 
   const ohlc = serie?.points.every((p) => p.ouverture !== null) ?? false;
 
@@ -148,7 +175,7 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="min-w-0">
-          <span className="sr-only">Instrument</span>
+          <span className="sr-only">{t("Instrument", "Instrument")}</span>
           <select
             value={symbole}
             onChange={(e) => setSymbole(e.target.value)}
@@ -157,7 +184,7 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
             {CLASSES.map((c) => {
               const liste = instruments.filter((i) => i.classe === c.cle);
               return liste.length === 0 ? null : (
-                <optgroup key={c.cle} label={c.libelle}>
+                <optgroup key={c.cle} label={t(c.fr, c.en)}>
                   {liste.map((i) => (
                     <option key={i.symbole} value={i.symbole}>{i.nom}</option>
                   ))}
@@ -166,7 +193,7 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
             })}
           </select>
         </label>
-        <div className="flex gap-1 rounded-xl bg-surface-2 p-1" role="tablist" aria-label="Période">
+        <div className="flex gap-1 rounded-xl bg-surface-2 p-1" role="tablist" aria-label={t("Période", "Period")}>
           {PERIODES.map((p) => (
             <button
               key={p.cle}
@@ -177,7 +204,7 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
                 periode === p.cle ? "bg-surface-3 text-texte" : "text-attenue hover:text-texte"
               }`}
             >
-              {p.libelle}
+              {t(p.fr, p.en)}
             </button>
           ))}
         </div>
@@ -187,7 +214,7 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
         <div ref={conteneur} className="absolute inset-0" />
         {etat !== "pret" && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-attenue">
-            {etat === "chargement" ? <span className="animate-chargement">Chargement…</span> : "Série indisponible pour le moment."}
+            {etat === "chargement" ? <span className="animate-chargement">{t("Chargement…", "Loading…")}</span> : t("Série indisponible pour le moment.", "Series unavailable for now.")}
           </div>
         )}
       </div>
@@ -195,17 +222,17 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-attenue">
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded bg-accent" /> {ohlc ? "Chandeliers" : "Clôture"}
+            <span className="h-0.5 w-4 rounded bg-accent" /> {ohlc ? t("Chandeliers", "Candles") : t("Clôture", "Close")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded bg-[#fbbf24]" /> MM20
+            <span className="h-0.5 w-4 rounded bg-[#fbbf24]" /> {t("MM20", "MA20")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded border-t border-dashed border-[#38bdf8]" /> MM50
+            <span className="h-0.5 w-4 rounded border-t border-dashed border-[#38bdf8]" /> {t("MM50", "MA50")}
           </span>
-          <span>Molette ou pincement : zoom · glisser : déplacer</span>
+          <span>{t("Molette ou pincement : zoom · glisser : déplacer", "Wheel or pinch: zoom · drag: pan")}</span>
         </span>
-        {serie && <Horodatage iso={serie.majLe} source={libelleSource(serie.source)} seuilHeures={30} />}
+        {serie && <Horodatage iso={serie.majLe} source={libelleSource(serie.source, langue)} seuilHeures={30} />}
       </div>
       {serie?.ticker.note_source && !ohlc && <p className="text-xs text-discret">{serie.ticker.note_source}</p>}
     </div>

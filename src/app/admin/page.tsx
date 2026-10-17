@@ -2,6 +2,8 @@ import { SectionPremium } from "@/components/admin/section-premium";
 import { Carte, Pastille } from "@/components/carte";
 import { EnTete } from "@/components/en-tete";
 import { DateLocale, Horodatage } from "@/components/horodatage";
+import { traducteur } from "@/lib/i18n";
+import { lirePreferences } from "@/lib/preferences";
 import { exigerAdmin } from "@/lib/profil";
 import { supabaseUtilisateur } from "@/lib/supabase";
 import type { LogTacheRow } from "@/lib/types-supabase";
@@ -25,6 +27,7 @@ function tonStatut(statut: string | null | undefined) {
 
 export default async function PageAdmin() {
   await exigerAdmin();
+  const t = traducteur((await lirePreferences()).langue);
   const supabase = await supabaseUtilisateur();
 
   const [taches, logs, cron, quota, premium] = await Promise.all([
@@ -50,48 +53,50 @@ export default async function PageAdmin() {
       <EnTete estAdmin />
       <main className="mx-auto flex max-w-[90rem] flex-col gap-5 px-4 py-6 sm:px-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Administration</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t("Administration", "Administration")}</h1>
           <p className="text-sm text-attenue">
-            Surveillance des tâches programmées : une tâche sans réussite depuis plus longtemps que son délai
-            d&apos;alerte est signalée.
+            {t(
+              "Surveillance des tâches programmées : une tâche sans réussite depuis plus longtemps que son délai d'alerte est signalée.",
+              "Scheduled job monitoring: a job without success for longer than its alert delay is flagged.",
+            )}
           </p>
         </div>
 
-        <SectionPremium premium={premium.data?.valeur === true} />
+        <SectionPremium premium={premium.data?.valeur === true} t={t} />
 
-        <Carte titre="Tâches programmées" sousTitre="pg_cron → Edge Functions">
+        <Carte titre={t("Tâches programmées", "Scheduled jobs")} sousTitre="pg_cron → Edge Functions">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[36rem] text-left text-sm">
               <thead className="text-xs text-attenue">
                 <tr>
-                  <th className="pb-2 font-medium">Tâche</th>
-                  <th className="pb-2 font-medium">Planification</th>
-                  <th className="pb-2 font-medium">Dernier statut</th>
-                  <th className="pb-2 font-medium">Dernière réussite</th>
+                  <th className="pb-2 font-medium">{t("Tâche", "Job")}</th>
+                  <th className="pb-2 font-medium">{t("Planification", "Schedule")}</th>
+                  <th className="pb-2 font-medium">{t("Dernier statut", "Last status")}</th>
+                  <th className="pb-2 font-medium">{t("Dernière réussite", "Last success")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-bordure">
-                {(taches.data ?? []).map((t) => {
-                  const dernier = dernierStatut.get(t.nom_tache);
+                {(taches.data ?? []).map((tache) => {
+                  const dernier = dernierStatut.get(tache.nom_tache);
                   return (
-                    <tr key={t.nom_tache}>
+                    <tr key={tache.nom_tache}>
                       <td className="py-2.5 pr-3">
-                        <div className="font-medium">{t.nom_tache}</div>
-                        <div className="text-xs text-attenue">{t.description}</div>
+                        <div className="font-medium">{tache.nom_tache}</div>
+                        <div className="text-xs text-attenue">{tache.description}</div>
                       </td>
-                      <td className="py-2.5 pr-3 font-mono text-xs text-attenue">{t.planification}</td>
+                      <td className="py-2.5 pr-3 font-mono text-xs text-attenue">{tache.planification}</td>
                       <td className="py-2.5 pr-3">
-                        <Pastille ton={tonStatut(dernier?.statut)}>{dernier?.statut ?? "jamais exécutée"}</Pastille>
+                        <Pastille ton={tonStatut(dernier?.statut)}>{dernier?.statut ?? t("jamais exécutée", "never run")}</Pastille>
                       </td>
                       <td className="py-2.5">
-                        {t.actif ? (
+                        {tache.actif ? (
                           <Horodatage
-                            iso={derniereReussite.get(t.nom_tache)}
+                            iso={derniereReussite.get(tache.nom_tache)}
                             source="logs_taches"
-                            seuilHeures={intervalleEnHeures(t.delai_alerte)}
+                            seuilHeures={intervalleEnHeures(tache.delai_alerte)}
                           />
                         ) : (
-                          <span className="text-xs text-discret">En pause (aucun utilisateur ne l&apos;a activée), pas d&apos;alerte de retard</span>
+                          <span className="text-xs text-discret">{t("En pause (aucun utilisateur ne l'a activée), pas d'alerte de retard", "Paused (no user turned it on), no delay alert")}</span>
                         )}
                       </td>
                     </tr>
@@ -103,7 +108,7 @@ export default async function PageAdmin() {
         </Carte>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          <Carte titre="Jobs pg_cron" sousTitre="Dernière exécution de chaque job">
+          <Carte titre={t("Jobs pg_cron", "pg_cron jobs")} sousTitre={t("Dernière exécution de chaque job", "Last run of each job")}>
             {cron.error ? (
               <p className="text-sm text-baisse">{cron.error.message}</p>
             ) : (
@@ -120,7 +125,7 @@ export default async function PageAdmin() {
                           <DateLocale iso={j.dernier_depart} />
                         </span>
                       )}
-                      <Pastille ton={tonStatut(j.dernier_statut)}>{j.dernier_statut ?? "en attente"}</Pastille>
+                      <Pastille ton={tonStatut(j.dernier_statut)}>{j.dernier_statut ?? t("en attente", "pending")}</Pastille>
                     </span>
                   </li>
                 ))}
@@ -128,7 +133,7 @@ export default async function PageAdmin() {
             )}
           </Carte>
 
-          <Carte titre="Quota des API" sousTitre="Compteur quotidien (UTC)">
+          <Carte titre={t("Quota des API", "API quota")} sousTitre={t("Compteur quotidien (UTC)", "Daily counter (UTC)")}>
             <ul className="divide-y divide-bordure text-sm">
               {(quota.data ?? []).map((q) => (
                 <li key={`${q.source}-${q.jour}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -138,17 +143,17 @@ export default async function PageAdmin() {
                   <span className="chiffres flex items-center gap-2">
                     {q.appels} / {q.limite}
                     {q.bloque_jusqu_a && new Date(q.bloque_jusqu_a) > new Date() && (
-                      <Pastille ton="alerte">bloqué</Pastille>
+                      <Pastille ton="alerte">{t("bloqué", "blocked")}</Pastille>
                     )}
                   </span>
                 </li>
               ))}
-              {(quota.data ?? []).length === 0 && <li className="py-2 text-attenue">Aucun appel enregistré.</li>}
+              {(quota.data ?? []).length === 0 && <li className="py-2 text-attenue">{t("Aucun appel enregistré.", "No call recorded.")}</li>}
             </ul>
           </Carte>
         </div>
 
-        <Carte titre="Journal" sousTitre="60 dernières exécutions">
+        <Carte titre={t("Journal", "Log")} sousTitre={t("60 dernières exécutions", "Last 60 runs")}>
           <ul className="divide-y divide-bordure text-sm">
             {journaux.map((l) => (
               <li key={l.id} className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-start sm:gap-4">

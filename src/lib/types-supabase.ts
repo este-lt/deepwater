@@ -25,6 +25,9 @@ export type ParametresRow = {
   clerk_user_id: string;
   biais_auto_actif: boolean;
   classes_affichees: string[];
+  langue: "fr" | "en";
+  theme: Json;
+  disposition: Json;
   cree_le: string;
   mis_a_jour_le: string;
 }
@@ -33,6 +36,7 @@ export type TickerRow = {
   id: string;
   symbole: string;
   nom: string;
+  nom_en: string | null;
   classe_actif: "indice" | "volatilite" | "taux" | "credit" | "forex" | "matiere" | "crypto";
   actif_bool: boolean;
   prioritaire: boolean;
@@ -110,7 +114,7 @@ export type CalendrierRow = {
   id: number;
   indicateur: string;
   libelle: string;
-  type_evenement: "publication" | "publication_prevue" | "banque_centrale";
+  type_evenement: "publication" | "publication_prevue" | "banque_centrale" | "mondial";
   date_reference: string | null;
   date_evenement: string;
   date_estimee: boolean;
@@ -121,6 +125,11 @@ export type CalendrierRow = {
   impact: "fort" | "moyen" | "faible";
   source_donnee: string;
   maj_le: string;
+  devise: string | null;
+  instant: string | null;
+  prevision: string | null;
+  precedent: string | null;
+  libelle_en: string | null;
 }
 
 export type ArticleRow = {
@@ -136,6 +145,16 @@ export type ArticleRow = {
   tickers_lies: string[];
   sentiment: number | null;
   cree_le: string;
+  traductions: Json;
+  type: "article" | "squawk";
+}
+
+export type TauxDirecteurRow = {
+  devise: string;
+  date: string;
+  taux: number;
+  source_donnee: string;
+  maj_le: string;
 }
 
 export type ConfigRow = {
@@ -206,6 +225,7 @@ export type Database = {
       indicateurs_macro: Table<MacroRow>;
       calendrier_economique: Table<CalendrierRow>;
       articles: Table<ArticleRow>;
+      taux_directeurs: Table<TauxDirecteurRow>;
       config_app: Table<ConfigRow, "cle" | "valeur">;
       logs_taches: Table<LogTacheRow>;
       taches_planifiees: Table<TachePlanifieeRow>;
@@ -224,6 +244,7 @@ export type Database = {
           ticker_id: string;
           symbole: string;
           nom: string;
+          nom_en: string | null;
           classe_actif: string;
           unite: string | null;
           variation: string;

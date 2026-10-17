@@ -3,10 +3,12 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { basculerBiaisAuto, calculerBiais, type Retour } from "@/app/actions";
 import { DateLocale } from "@/components/horodatage";
+import { useLangue } from "@/components/langue";
 
 // Interrupteur personnel : le calcul automatique (global) tourne si au moins un
 // utilisateur l'a activé. Le bouton manuel reste disponible dans tous les cas.
 export function CommandesBiais({ autoActif }: { autoActif: boolean }) {
+  const { t } = useLangue();
   const [enCours, demarrer] = useTransition();
   const [actif, setActifOptimiste] = useOptimistic(autoActif);
   const [retour, setRetour] = useState<Retour | null>(null);
@@ -40,7 +42,7 @@ export function CommandesBiais({ autoActif }: { autoActif: boolean }) {
           >
             <span className={`size-4 rounded-full bg-white shadow transition-transform ${actif ? "translate-x-[1.125rem]" : "translate-x-0.5"}`} />
           </span>
-          Calcul automatique
+          {t("Calcul automatique", "Automatic calculation")}
         </button>
         <button
           type="button"
@@ -48,7 +50,7 @@ export function CommandesBiais({ autoActif }: { autoActif: boolean }) {
           disabled={calcul}
           className="rounded-lg border border-accent/50 bg-accent-doux px-3.5 py-1.5 text-sm font-medium text-accent-clair transition-colors hover:border-accent disabled:animate-chargement"
         >
-          {calcul ? "Calcul en cours…" : "Calculer maintenant"}
+          {calcul ? t("Calcul en cours…", "Calculating…") : t("Calculer maintenant", "Calculate now")}
         </button>
       </div>
       {retour && (
@@ -56,7 +58,7 @@ export function CommandesBiais({ autoActif }: { autoActif: boolean }) {
           {retour.message}
           {retour.reessayerApres && (
             <>
-              {" "}Nouvel essai possible à <DateLocale iso={retour.reessayerApres} options={{ hour: "2-digit", minute: "2-digit" }} />.
+              {" "}{t("Nouvel essai possible à", "Try again at")} <DateLocale iso={retour.reessayerApres} options={{ hour: "2-digit", minute: "2-digit" }} />.
             </>
           )}
         </p>

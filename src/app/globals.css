@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
-/* Palette sombre par défaut, une couleur d'accent vive, sémantique hausse/baisse. */
+/* Requêtes de conteneur (Tailwind v4 : @container, @md:..., @lg:...). */
+
+/* Palette « Deepwater » par défaut : sombre, une couleur d'accent vive, sémantique hausse/baisse.
+   Les autres styles (Terminal, Océan, Clair) redéfinissent ces variables plus bas. */
 @theme {
   --color-fond: #090b10;
   --color-surface: #10131a;
@@ -46,14 +49,14 @@
   @keyframes validation {
     0% {
       transform: scale(1);
-      box-shadow: 0 0 0 0 rgb(124 108 255 / 0.45);
+      box-shadow: 0 0 0 0 var(--color-accent-doux);
     }
     40% {
       transform: scale(1.04);
     }
     100% {
       transform: scale(1);
-      box-shadow: 0 0 0 14px rgb(124 108 255 / 0);
+      box-shadow: 0 0 0 14px transparent;
     }
   }
   /* Barre de progression douce (jauge du biais) : à combiner avec origin-left/right. */
@@ -71,6 +74,71 @@
       opacity: 0.9;
     }
   }
+}
+
+/* ------------------------------------------------------------------ Styles */
+
+/* Terminal : noir, ambre, angles droits (esprit terminal de marché professionnel). */
+:root[data-style="terminal"] {
+  --color-fond: #000000;
+  --color-surface: #0b0b0b;
+  --color-surface-2: #141414;
+  --color-surface-3: #1f1f1f;
+  --color-bordure: rgb(255 159 26 / 0.14);
+  --color-bordure-forte: rgb(255 159 26 / 0.3);
+  --color-texte: #f2f2f2;
+  --color-attenue: #b3a58f;
+  --color-discret: #7a6e5c;
+  --color-hausse: #22c55e;
+  --color-hausse-doux: rgb(34 197 94 / 0.14);
+  --color-baisse: #ef4444;
+  --color-baisse-doux: rgb(239 68 68 / 0.14);
+  --radius-carte: 0.25rem;
+}
+
+/* Océan : bleu nuit, accent cyan. */
+:root[data-style="ocean"] {
+  --color-fond: #06101c;
+  --color-surface: #0b1828;
+  --color-surface-2: #102136;
+  --color-surface-3: #172c45;
+  --color-bordure: rgb(148 197 255 / 0.09);
+  --color-bordure-forte: rgb(148 197 255 / 0.18);
+  --color-texte: #e6f0fa;
+  --color-attenue: #8fa6bf;
+  --color-discret: #5b7189;
+}
+
+/* Clair : fond clair, contrastes renforcés pour la lecture de jour. */
+:root[data-style="clair"] {
+  color-scheme: light;
+  --color-fond: #f4f5f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f3f7;
+  --color-surface-3: #e4e8ef;
+  --color-bordure: rgb(15 23 42 / 0.08);
+  --color-bordure-forte: rgb(15 23 42 / 0.16);
+  --color-texte: #11141b;
+  --color-attenue: #525a6c;
+  --color-discret: #7f8696;
+  --color-hausse: #047857;
+  --color-hausse-doux: rgb(4 120 87 / 0.1);
+  --color-baisse: #c62828;
+  --color-baisse-doux: rgb(198 40 40 / 0.09);
+  --color-neutre: #52525b;
+  --color-neutre-doux: rgb(82 82 91 / 0.1);
+  --color-alerte: #b45309;
+  --color-alerte-doux: rgb(180 83 9 / 0.1);
+}
+
+/* Densité compacte : tout est proportionnel au rem, une taille de base réduite suffit. */
+:root[data-densite="compacte"] {
+  font-size: 87.5%;
+}
+
+/* Police à chasse fixe pour tout le site (style Terminal par défaut). */
+:root[data-police="mono"] body {
+  font-family: var(--font-mono);
 }
 
 :root {
@@ -96,7 +164,7 @@ body {
 }
 
 ::selection {
-  background: rgb(124 108 255 / 0.35);
+  background: var(--color-accent-doux);
 }
 
 :focus-visible {

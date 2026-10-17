@@ -1,40 +1,51 @@
-// Formats français, utilisables côté serveur et navigateur.
+// Formats selon la langue de l'utilisateur (français par défaut), serveur et navigateur.
+import { type Langue, localeDe } from "./i18n";
 
-export function formaterNombre(valeur: number | null | undefined, decimales = 2): string {
+export function formaterNombre(valeur: number | null | undefined, decimales = 2, langue: Langue = "fr"): string {
   if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return "—";
-  return new Intl.NumberFormat("fr-FR", { minimumFractionDigits: decimales, maximumFractionDigits: decimales }).format(valeur);
+  return new Intl.NumberFormat(localeDe(langue), { minimumFractionDigits: decimales, maximumFractionDigits: decimales }).format(valeur);
 }
 
-// Nombre compact signé : 12 345 678 -> "+12,3 M" (titres, effectifs).
-export function formaterNombreCourt(valeur: number | null | undefined): string {
+// Nombre compact signé : 12 345 678 -> "+12,3 M" (en anglais "+12.3M").
+export function formaterNombreCourt(valeur: number | null | undefined, langue: Langue = "fr"): string {
   if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return "—";
   const abs = Math.abs(valeur);
   const signe = valeur > 0 ? "+" : valeur < 0 ? "−" : "";
-  if (abs >= 1e9) return `${signe}${formaterNombre(abs / 1e9, 2)} Md`;
-  if (abs >= 1e6) return `${signe}${formaterNombre(abs / 1e6, 1)} M`;
-  if (abs >= 1e4) return `${signe}${formaterNombre(abs / 1e3, 0)} k`;
-  return `${signe}${formaterNombre(abs, 0)}`;
+  const espace = langue === "en" ? "" : " ";
+  if (abs >= 1e9) return `${signe}${formaterNombre(abs / 1e9, 2, langue)}${espace}${langue === "en" ? "B" : "Md"}`;
+  if (abs >= 1e6) return `${signe}${formaterNombre(abs / 1e6, 1, langue)}${espace}M`;
+  if (abs >= 1e4) return `${signe}${formaterNombre(abs / 1e3, 0, langue)}${espace}k`;
+  return `${signe}${formaterNombre(abs, 0, langue)}`;
 }
 
-export function formaterPct(valeur: number | null | undefined, decimales = 2, signe = true): string {
+// Suffixe d'unité : « 3,7 % » en français, « 3.7% » en anglais.
+export const pct = (langue: Langue) => (langue === "en" ? "%" : " %");
+
+export function formaterPct(valeur: number | null | undefined, decimales = 2, signe = true, langue: Langue = "fr"): string {
   if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return "—";
-  const texte = formaterNombre(Math.abs(valeur), decimales);
-  if (!signe) return `${texte} %`;
-  return `${valeur > 0 ? "+" : valeur < 0 ? "−" : ""}${texte} %`;
+  const texte = `${formaterNombre(Math.abs(valeur), decimales, langue)}${pct(langue)}`;
+  if (!signe) return valeur < 0 ? `−${texte}` : texte;
+  return `${valeur > 0 ? "+" : valeur < 0 ? "−" : ""}${texte}`;
+}
+
+// Variation signée en points de base : « +6 pb » / « +6 bp ».
+export function formaterPb(valeur: number | null | undefined, langue: Langue = "fr"): string {
+  if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return "—";
+  const signe = valeur > 0 ? "+" : valeur < 0 ? "−" : "";
+  return `${signe}${formaterNombre(Math.abs(valeur), 0, langue)} ${langue === "en" ? "bp" : "pb"}`;
 }
 
 // Nombre de décimales adapté à l'ordre de grandeur (indice, action, devise).
 export function decimalesPour(valeur: number): number {
-  if (valeur >= 1000) return 2;
   if (valeur >= 10) return 2;
   return 4;
 }
 
-// Date de séance "2026-10-15" -> "15 oct. 2026" (sans conversion de fuseau : c'est un jour de marché).
-export function formaterDateSeance(date: string | null | undefined): string {
+// Date de séance "2026-10-15" -> "15 oct. 2026" / "Oct 15, 2026" (jour de marché, sans fuseau).
+export function formaterDateSeance(date: string | null | undefined, langue: Langue = "fr", annee = true): string {
   if (!date) return "—";
   const [a, m, j] = date.split("-").map(Number);
-  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(
+  return new Intl.DateTimeFormat(localeDe(langue), { day: "numeric", month: "short", ...(annee ? { year: "numeric" } : {}), timeZone: "UTC" }).format(
     new Date(Date.UTC(a, m - 1, j)),
   );
 }
@@ -42,14 +53,14 @@ export function formaterDateSeance(date: string | null | undefined): string {
 export type Frequence = "jour" | "semaine" | "mois" | "trimestre";
 
 // Période d'une statistique datée au 1er du mois : "2026-09-01" -> "sept. 2026" (mensuelle),
-// "2026-04-01" -> "T2 2026" (trimestrielle) ; une série quotidienne garde son jour.
-export function formaterPeriode(date: string | null | undefined, frequence: Frequence): string {
+// "2026-04-01" -> "T2 2026" / "Q2 2026" (trimestrielle) ; une série quotidienne garde son jour.
+export function formaterPeriode(date: string | null | undefined, frequence: Frequence, langue: Langue = "fr"): string {
   if (!date) return "—";
-  if (frequence === "jour") return formaterDateSeance(date);
-  if (frequence === "semaine") return `semaine du ${formaterDateSeance(date)}`;
+  if (frequence === "jour") return formaterDateSeance(date, langue);
+  if (frequence === "semaine") return `${langue === "en" ? "week of" : "semaine du"} ${formaterDateSeance(date, langue)}`;
   const [a, m] = date.split("-").map(Number);
-  if (frequence === "trimestre") return `T${Math.floor((m - 1) / 3) + 1} ${a}`;
-  return new Intl.DateTimeFormat("fr-FR", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(a, m - 1, 1)));
+  if (frequence === "trimestre") return `${langue === "en" ? "Q" : "T"}${Math.floor((m - 1) / 3) + 1} ${a}`;
+  return new Intl.DateTimeFormat(localeDe(langue), { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(a, m - 1, 1)));
 }
 
 // "2026-09-01" moins 12 mois -> "2025-09-01" (séries mensuelles datées au 1er du mois).

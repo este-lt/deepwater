@@ -1,6 +1,14 @@
 // Écriture des prix quotidiens + recalcul des moyennes mobiles 20/50 jours.
-import type { BarreQuotidienne } from "./alpha-vantage.ts";
 import { admin } from "./supabase.ts";
+
+export interface BarreQuotidienne {
+  date: string;
+  ouverture: number | null;
+  plus_haut: number | null;
+  plus_bas: number | null;
+  cloture: number;
+  volume: number | null;
+}
 
 const TAILLE_LOT = 1000;
 

@@ -1,11 +1,13 @@
 # Deepwater
 
-Terminal de marché gratuit centré sur le **S&P 500** et le **Nasdaq-100** : biais
-quotidien par règles, moniteur multi-actifs (indices, volatilité, taux, crédit, devises,
-matières premières, crypto ; classes choisies par chaque utilisateur), courbe des taux,
-macroéconomie américaine, actualités filtrées et calendrier économique. Aucune action
-individuelle. Données publiques gratuites, différées, jamais en temps
-réel. Les sources et leurs limites sont détaillées dans [docs/SOURCES.md](docs/SOURCES.md).
+Terminal de marché gratuit : biais quotidien du **S&P 500** et du **Nasdaq-100**, moniteur
+multi-actifs (indices, volatilité, taux, crédit, devises, matières premières, crypto),
+banques centrales et macro des 8 grandes économies, régime risk-on/risk-off et
+corrélations, force des devises et paires par confluence, calendrier mondial avec
+consensus, fil instantané filtré, actualités, rapports quotidien et hebdomadaire. Aucune
+action individuelle. Site bilingue (français, anglais), apparence et tableau de bord
+personnalisables par chaque utilisateur. Données publiques gratuites, différées (sauf fil
+instantané et crypto). Sources et limites : [docs/SOURCES.md](docs/SOURCES.md).
 
 ## Architecture
 
@@ -14,7 +16,7 @@ réel. Les sources et leurs limites sont détaillées dans [docs/SOURCES.md](doc
 | Next.js 16 (App Router, TypeScript strict, Tailwind) sur Railway | interface ; lit la base avec le jeton Clerk de l'utilisateur |
 | Clerk | connexion ; webhook signé et fonction de secours pour créer le profil |
 | Supabase Postgres + RLS | données de marché partagées en lecture, paramètres et validations par utilisateur |
-| Supabase Edge Functions (`supabase/functions`) | collectes (`collecte-marches` : FRED, BCE, CoinGecko ; `collecte-av` : or et argent ; `collecte-rss`), calcul du biais |
+| Supabase Edge Functions (`supabase/functions`) | collectes (`collecte-marches` : FRED, BCE, CoinGecko, Forex Factory, BRI, OCDE, BNS, Eurostat ; `collecte-av` : or et argent ; `collecte-rss` : articles et squawks, traduction MyMemory), calcul du biais |
 | pg_cron + pg_net | planification ; chaque tâche écrit dans `logs_taches` (page Admin) |
 | Supabase Vault | secrets lus côté serveur uniquement |
 
@@ -31,7 +33,12 @@ Les migrations sont dans `supabase/migrations`, les fonctions dans `supabase/fun
 (code partagé dans `_shared`). Les règles modifiables :
 
 - filtre des actualités : `supabase/functions/_shared/filtre-actualites.ts`
+- filtre du fil instantané : `supabase/functions/_shared/squawks.ts`
 - biais quotidien : `supabase/functions/calcul-biais/regles.ts`
+- régime, corrélations, force des devises, paires : `src/lib/analyse.ts`
+
+Textes du site : écrits dans les deux langues à l'endroit où ils s'affichent,
+`t("Texte", "Text")` (`src/lib/i18n.ts`, `useLangue()` côté navigateur).
 
 ## Commandes
 
@@ -39,7 +46,7 @@ Les migrations sont dans `supabase/migrations`, les fonctions dans `supabase/fun
 |---|---|
 | `npm run build` | compilation, puis recherche de fuites de secrets |
 | `npm run lint` | ESLint |
-| `npx deno test --allow-read supabase/functions` | tests des Edge Functions (filtre, calendrier, Alpha Vantage, biais) |
+| `npx deno test --allow-read supabase/functions` | tests (filtres articles et squawks, calendriers, macro mondiale, Alpha Vantage, biais, analyses du site) |
 | `npm run test:comptes` | crée ou rafraîchit les deux comptes de test (Clerk) |
 | `npm run test:rls -- <id d'un biais>` | isolation RLS entre les deux comptes |
 | `npm run test:webhook` | signature et idempotence du webhook Clerk |

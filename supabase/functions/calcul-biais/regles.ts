@@ -7,7 +7,7 @@
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
 export const REGLES_BIAIS = {
-  version: "2026-10-17",
+  version: "2026-10-17b",
 
   // Conversion du score (entre -1 et +1) en biais.
   seuils: { haussier: 0.2, baissier: -0.2 },
@@ -43,6 +43,7 @@ export const REGLES_BIAIS = {
   taux: {
     maturite: "10year",
     libelle: "Taux à 10 ans",
+    libelle_en: "10-year yield",
     seancesVariation: 5,
     variationPleinePts: 0.2, // +0,20 pt en 5 séances -> note -1
     partVariation: 0.7,
@@ -57,16 +58,16 @@ export const REGLES_BIAIS = {
   macro: {
     fenetreJours: 45,
     indicateurs: {
-      CPI: { libelle: "Inflation", sens: -1, ecartPlein: 0.3, unite: "pt" },
-      CORE_CPI: { libelle: "Inflation sous-jacente", sens: -1, ecartPlein: 0.2, unite: "pt" },
-      CORE_PCE: { libelle: "PCE sous-jacent", sens: -1, ecartPlein: 0.2, unite: "pt" },
-      PPI: { libelle: "Prix à la production", sens: -1, ecartPlein: 1, unite: "pt" },
-      UNEMPLOYMENT: { libelle: "Chômage", sens: -1, ecartPlein: 0.2, unite: "pt" },
-      NONFARM_PAYROLL: { libelle: "Emplois créés", sens: 1, ecartPlein: 100, unite: "k" },
-      JOBLESS_CLAIMS: { libelle: "Inscriptions au chômage", sens: -1, ecartPlein: 25, unite: "k" },
-      RETAIL_SALES: { libelle: "Ventes au détail", sens: 1, ecartPlein: 0.5, unite: "pt" },
-      REAL_GDP: { libelle: "Croissance du PIB", sens: 1, ecartPlein: 1, unite: "pt" },
-    } as Record<string, { libelle: string; sens: 1 | -1; ecartPlein: number; unite: "pt" | "k" }>,
+      CPI: { libelle: "Inflation", libelle_en: "Inflation", sens: -1, ecartPlein: 0.3, unite: "pt" },
+      CORE_CPI: { libelle: "Inflation sous-jacente", libelle_en: "Core inflation", sens: -1, ecartPlein: 0.2, unite: "pt" },
+      CORE_PCE: { libelle: "PCE sous-jacent", libelle_en: "Core PCE", sens: -1, ecartPlein: 0.2, unite: "pt" },
+      PPI: { libelle: "Prix à la production", libelle_en: "Producer prices", sens: -1, ecartPlein: 1, unite: "pt" },
+      UNEMPLOYMENT: { libelle: "Chômage", libelle_en: "Unemployment", sens: -1, ecartPlein: 0.2, unite: "pt" },
+      NONFARM_PAYROLL: { libelle: "Emplois créés", libelle_en: "Payrolls", sens: 1, ecartPlein: 100, unite: "k" },
+      JOBLESS_CLAIMS: { libelle: "Inscriptions au chômage", libelle_en: "Jobless claims", sens: -1, ecartPlein: 25, unite: "k" },
+      RETAIL_SALES: { libelle: "Ventes au détail", libelle_en: "Retail sales", sens: 1, ecartPlein: 0.5, unite: "pt" },
+      REAL_GDP: { libelle: "Croissance du PIB", libelle_en: "GDP growth", sens: 1, ecartPlein: 1, unite: "pt" },
+    } as Record<string, { libelle: string; libelle_en: string; sens: 1 | -1; ecartPlein: number; unite: "pt" | "k" }>,
   },
 
   // Appétit pour le risque : volatilité implicite (VIX ou VXN) et spread de crédit à haut

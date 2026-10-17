@@ -29,6 +29,8 @@ Deno.test("tendance : écarts aux moyennes mobiles, donnée trop ancienne", () =
   // +2 % / 2 % = +1 (moitié) ; +4,08 % / 4 % = +1 borné (moitié) -> +1.
   egal("note pleine", f.note, 1);
   if (!f.texte.includes("2,0 % au-dessus de la MM20")) throw new Error(f.texte);
+  // Même explication en anglais (site bilingue).
+  if (!f.texte_en.includes("2.0% above the 20-day MA") || f.libelle_en !== "Trend (moving averages)") throw new Error(f.texte_en);
   const vieux = facteurTendance("SPX", { date: "2026-10-01", cloture: 102, mm20: 100, mm50: 98, source: "fred:SP500" }, "2026-10-16");
   egal("trop ancien", vieux.statut, "indisponible");
 });

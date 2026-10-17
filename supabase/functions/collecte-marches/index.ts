@@ -3,16 +3,21 @@
 //   bce        : cours de référence des devises
 //   crypto     : cours du moment (CoinGecko)
 //   calendrier : dates des prochaines publications macro (API FRED, clé gratuite)
+//   mondial    : calendrier économique mondial de la semaine (Forex Factory)
+//   monde      : taux directeurs, inflation, chômage, PIB des 8 grandes économies
 // Une série en panne est journalisée et ignorée sans bloquer les autres.
 import { type Calcul, lireCoursBce, paire } from "../_shared/bce.ts";
 import { enregistrerPublication, PUBLICATIONS } from "../_shared/calendrier.ts";
 import { lireCoursCrypto } from "../_shared/coingecko.ts";
+import { analyserCalendrier, type EvenementFF, URL_FF } from "../_shared/forexfactory.ts";
 import { appelerApiFred, lireSerieFred } from "../_shared/fred.ts";
 import { servirTacheProtegee } from "../_shared/garde.ts";
 import { attendre, json } from "../_shared/http.ts";
 import { executerTache } from "../_shared/journal.ts";
+import { changementsDeTaux, DEVISES, lireMacroMonde, lireTauxDirecteurs } from "../_shared/monde.ts";
 import { enregistrerPrix } from "../_shared/prix.ts";
-import { admin } from "../_shared/supabase.ts";
+import { admin, lireSecret } from "../_shared/supabase.ts";
+import { traduire } from "../_shared/traduction.ts";
 
 const HISTORIQUE_ANS = 10;
 const RECHARGE_JOURS = 30;
@@ -238,9 +243,113 @@ async function collecterCalendrier(bilan: Bilan, erreurs: string[]): Promise<str
   return null;
 }
 
+// ---------------------------------------------------------------------------- Calendrier mondial
+
+async function collecterMondial(bilan: Bilan): Promise<void> {
+  const reponse = await fetch(URL_FF, {
+    headers: { "User-Agent": (await lireSecret("sec_user_agent")) ?? "Deepwater", Accept: "application/json" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!reponse.ok) throw new Error(`Forex Factory : HTTP ${reponse.status}`);
+  const evenements = analyserCalendrier(await reponse.json() as EvenementFF[]);
+  if (evenements.length === 0) throw new Error("Forex Factory : calendrier vide");
+
+  // Titres absents du glossaire : traduction automatique (en cache), sinon l'anglais.
+  const inconnus = evenements.filter((e) => e.libelle === e.titre).map((e) => e.titre);
+  const traduits = await traduire(inconnus, "fr").catch(() => new Map<string, string>());
+
+  const lignes = new Map<string, Record<string, unknown>>();
+  for (const e of evenements) {
+    const indicateur = `FF:${e.devise}:${e.titre}:${e.instant.slice(11, 16)}`;
+    lignes.set(`${indicateur}|${e.instant.slice(0, 10)}`, {
+      indicateur,
+      libelle: traduits.get(e.titre) ?? e.libelle,
+      libelle_en: e.titre,
+      type_evenement: "mondial",
+      date_evenement: e.instant.slice(0, 10),
+      date_estimee: false,
+      devise: e.devise,
+      instant: e.instant,
+      impact: e.impact,
+      prevision: e.prevision,
+      precedent: e.precedent,
+      source_donnee: "forexfactory",
+      maj_le: new Date().toISOString(),
+    });
+  }
+  // Le flux couvre la semaine en cours : il remplace ce qui était stocké pour ces jours
+  // (horaires déplacés, événements retirés). Au-delà de 15 jours, l'historique est purgé.
+  const debut = evenements[0].instant.slice(0, 10);
+  const fin = evenements[evenements.length - 1].instant.slice(0, 10);
+  const table = () => admin().from("calendrier_economique");
+  const { error: e1 } = await table().delete().eq("type_evenement", "mondial").gte("date_evenement", debut).lte("date_evenement", fin);
+  if (e1) throw new Error(e1.message);
+  const { error: e2 } = await table().insert([...lignes.values()]);
+  if (e2) throw new Error(e2.message);
+  await table().delete().eq("type_evenement", "mondial").lt("date_evenement", ilYa(15));
+  const forts = evenements.filter((e) => e.impact === "fort").length;
+  bilan.semaine = `${lignes.size} événements du ${debut} au ${fin}, dont ${forts} à fort impact ; ${traduits.size}/${new Set(inconnus).size} titres hors glossaire traduits`;
+}
+
+// ---------------------------------------------------------------------------- Macro des 8 économies
+
+async function collecterMonde(bilan: Bilan, erreurs: string[]): Promise<void> {
+  const signaler = (cle: string, erreur: unknown) => {
+    const message = erreur instanceof Error ? erreur.message : String(erreur);
+    erreurs.push(`${cle} : ${message}`);
+    bilan[cle] = `échec : ${message}`;
+  };
+
+  // Taux directeurs : seules les décisions (changements) sont stockées.
+  try {
+    const { data: connus, error } = await admin().from("taux_directeurs").select("devise, date, taux").order("date", { ascending: false });
+    if (error) throw new Error(error.message);
+    const derniers = new Map<string, { date: string; taux: number }>();
+    for (const l of connus ?? []) if (!derniers.has(l.devise)) derniers.set(l.devise, { date: l.date, taux: Number(l.taux) });
+    const depuis = DEVISES.every((d) => derniers.has(d)) ? ilYa(90) : "2015-01-01";
+    const series = await lireTauxDirecteurs(depuis);
+    for (const devise of DEVISES) {
+      const serie = series.get(devise);
+      if (!serie?.length) {
+        signaler(`taux:${devise}`, new Error("absent de la réponse BRI"));
+        continue;
+      }
+      const dernier = derniers.get(devise);
+      const nouveaux = changementsDeTaux(serie.filter((p) => !dernier || p.date > dernier.date), dernier?.taux ?? null);
+      if (nouveaux.length) {
+        const { error: e } = await admin().from("taux_directeurs").upsert(
+          nouveaux.map((p) => ({ devise, date: p.date, taux: p.valeur, source_donnee: "bis:WS_CBPOL", maj_le: new Date().toISOString() })),
+          { onConflict: "devise,date" },
+        );
+        if (e) throw new Error(e.message);
+      }
+      const fin = serie[serie.length - 1];
+      bilan[`taux:${devise}`] = `${fin.valeur} % au ${fin.date}${nouveaux.length ? `, ${nouveaux.length} décision(s) ajoutée(s)` : ""}`;
+    }
+  } catch (erreur) {
+    signaler("taux", erreur);
+  }
+
+  // Inflation, chômage, PIB : 3 ans d'historique, révisions reprises à chaque passage.
+  const series = await lireMacroMonde(ilYa(3 * 366), signaler);
+  for (const s of series) {
+    const indicateur = `MONDE:${s.mesure}:${s.devise}`;
+    const { error } = await admin().from("indicateurs_macro").upsert(
+      s.points.map((p) => ({ indicateur, date: p.date, valeur: p.valeur, unite: "%", source_donnee: s.source, maj_le: new Date().toISOString() })),
+      { onConflict: "indicateur,date" },
+    );
+    if (error) {
+      signaler(indicateur, new Error(error.message));
+      continue;
+    }
+    const fin = s.points[s.points.length - 1];
+    bilan[indicateur] = `${fin.valeur} (${fin.date})`;
+  }
+}
+
 // ---------------------------------------------------------------------------- Point d'entrée
 
-const SOURCES = ["fred", "bce", "crypto", "calendrier"] as const;
+const SOURCES = ["fred", "bce", "crypto", "calendrier", "mondial", "monde"] as const;
 
 servirTacheProtegee(async (corps) => {
   const source = SOURCES.find((s) => s === corps.source);
@@ -253,6 +362,8 @@ servirTacheProtegee(async (corps) => {
     if (source === "bce") await collecterBce(bilan, erreurs);
     if (source === "crypto") await collecterCrypto(bilan);
     if (source === "calendrier") remarque = await collecterCalendrier(bilan, erreurs);
+    if (source === "mondial") await collecterMondial(bilan);
+    if (source === "monde") await collecterMonde(bilan, erreurs);
     const total = Object.keys(bilan).length;
     if (total > 0 && erreurs.length === total) throw new Error(`Toutes les séries en échec : ${erreurs.join(" | ")}`);
     const resume = remarque ?? Object.entries(bilan).map(([c, b]) => `${c} ${b}`).join(" ; ");

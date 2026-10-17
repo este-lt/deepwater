@@ -2,6 +2,7 @@
 // "Note" / "Information" renvoyées avec un code 200 (limite atteinte ou endpoint
 // payant) : elles ne sont jamais mises en cache comme des données valides.
 import { ecrireCache, lireCache, prochainMinuitUtc } from "./cache.ts";
+import type { BarreQuotidienne } from "./prix.ts";
 import { admin, lireSecret } from "./supabase.ts";
 
 export type ResultatAV =
@@ -105,15 +106,6 @@ const nombre = (v: unknown): number | null => {
   const n = Number(v);
   return v === undefined || v === null || v === "" || v === "." || !Number.isFinite(n) ? null : n;
 };
-
-export interface BarreQuotidienne {
-  date: string;
-  ouverture: number | null;
-  plus_haut: number | null;
-  plus_bas: number | null;
-  cloture: number;
-  volume: number | null;
-}
 
 // Séries économiques et matières premières : { name, unit, data: [{ date, value }] }.
 // Les valeurs "." (jour sans publication) sont ignorées, jamais remplacées.

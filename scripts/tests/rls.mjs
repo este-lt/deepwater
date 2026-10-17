@@ -101,6 +101,25 @@ verifier("A lit le moniteur multi-actifs", r.statut === 200 && r.donnees.length 
 r = await rest("/rpc/resume_marches", { methode: "POST", corps: {} });
 verifier("Anonyme : moniteur refuse", r.statut >= 400, r);
 
+console.log("Langue, apparence, disposition (par utilisateur) ; macro mondiale ; traductions");
+r = await rest(`/parametres_utilisateur?clerk_user_id=eq.${b.id}`, { jwt: a.jwt, methode: "PATCH", corps: { langue: "en", theme: { style: "clair" } }, prefer: R });
+verifier("A ne change pas la langue ni le theme de B (0 ligne)", r.statut === 200 && r.donnees.length === 0, r);
+r = await rest(`/parametres_utilisateur?clerk_user_id=eq.${a.id}`, { jwt: a.jwt, methode: "PATCH", corps: { disposition: { masques: ["macro"] } }, prefer: R });
+verifier("A change sa propre disposition", r.statut === 200 && r.donnees.length === 1, r);
+await rest(`/parametres_utilisateur?clerk_user_id=eq.${a.id}`, { jwt: a.jwt, methode: "PATCH", corps: { disposition: {} } });
+r = await rest(`/parametres_utilisateur?clerk_user_id=eq.${a.id}`, { jwt: a.jwt, methode: "PATCH", corps: { langue: "de" }, prefer: R });
+verifier("Langue hors fr/en refusee", r.statut >= 400, r);
+r = await rest("/taux_directeurs?select=devise&limit=1", { jwt: a.jwt });
+verifier("A lit les taux directeurs", r.statut === 200 && r.donnees.length === 1, r);
+r = await rest("/taux_directeurs?select=devise&limit=1");
+verifier("Anonyme : taux directeurs refuses", r.statut >= 400 || (r.statut === 200 && r.donnees.length === 0), r);
+r = await rest("/taux_directeurs", { jwt: a.jwt, methode: "POST", corps: { devise: "USD", date: "2000-01-01", taux: 99 } });
+verifier("A ne peut pas ecrire de taux directeur", r.statut >= 400, r);
+r = await rest("/traductions?select=empreinte&limit=1", { jwt: a.jwt });
+verifier("Cache de traduction inaccessible aux comptes", r.statut >= 400 || (r.statut === 200 && r.donnees.length === 0), r);
+r = await rest("/articles?select=id&type=eq.squawk&limit=1", { jwt: a.jwt });
+verifier("A lit le fil instantane", r.statut === 200, r);
+
 console.log("Limitation du calcul manuel");
 r = await rest("/rpc/reserver_calcul_manuel", { jwt: a.jwt, methode: "POST", corps: {} });
 verifier("1re demande autorisee", r.donnees?.autorise === true, r);

@@ -1,4 +1,5 @@
 import "server-only";
+import type { Langue } from "./i18n";
 import type { ClientSupabase } from "./supabase";
 import type { TickerRow } from "./types-supabase";
 
@@ -6,6 +7,7 @@ import type { TickerRow } from "./types-supabase";
 export interface LigneMarche {
   symbole: string;
   nom: string;
+  nomEn: string | null;
   classe: TickerRow["classe_actif"];
   unite: string | null;
   // pct : variation en % ; pb : en points de base (taux, spreads) ; pts : en points (volatilité, indices composites).
@@ -49,6 +51,7 @@ export async function lireMarches(supabase: ClientSupabase): Promise<LigneMarche
     return {
       symbole: l.symbole,
       nom: l.nom,
+      nomEn: l.nom_en,
       classe: l.classe_actif as LigneMarche["classe"],
       unite: l.unite,
       variation: type,
@@ -132,4 +135,34 @@ export function valeurAncienne(date: string | null | undefined, toleranceJours =
   if (!date) return true;
   const ecartJours = (maintenant.getTime() - new Date(`${date}T23:59:59Z`).getTime()) / 86_400_000;
   return ecartJours > toleranceJours;
+}
+
+export const nomInstrument = (l: { nom: string; nomEn?: string | null }, langue: Langue) => (langue === "en" && l.nomEn ? l.nomEn : l.nom);
+
+// Clôtures de plusieurs instruments sur les `jours` derniers jours (régime, corrélations, devises).
+export async function lireClotures(
+  supabase: ClientSupabase,
+  symboles: string[],
+  jours: number,
+): Promise<Map<string, { date: string; cloture: number }[]>> {
+  const { data: tickers, error } = await supabase.from("tickers_suivis").select("id, symbole").in("symbole", symboles);
+  if (error) throw new Error(`Lecture des instruments impossible : ${error.message}`);
+  const parId = new Map((tickers ?? []).map((t) => [t.id, t.symbole]));
+  const series = new Map<string, { date: string; cloture: number }[]>(symboles.map((s) => [s, []]));
+  if (parId.size === 0) return series;
+  const depuis = new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
+  for (let debut = 0; ; debut += 1000) {
+    const { data, error: e } = await supabase
+      .from("prix_historique")
+      .select("ticker_id, date, cloture")
+      .in("ticker_id", [...parId.keys()])
+      .gte("date", depuis)
+      .order("date", { ascending: true })
+      .order("ticker_id", { ascending: true })
+      .range(debut, debut + 999);
+    if (e) throw new Error(`Lecture des clôtures impossible : ${e.message}`);
+    for (const p of data ?? []) series.get(parId.get(p.ticker_id)!)?.push({ date: p.date, cloture: Number(p.cloture) });
+    if ((data ?? []).length < 1000) break;
+  }
+  return series;
 }
