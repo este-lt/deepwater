@@ -2,11 +2,10 @@ import { enUS, frFR } from "@clerk/localizations";
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import type { CSSProperties } from "react";
 import { FournisseurLangue } from "@/components/langue";
 import { traducteur } from "@/lib/i18n";
 import { lirePreferences } from "@/lib/preferences";
-import { couleursAccent, STYLES, styleSombre } from "@/lib/theme";
+import { couleursConcretes, cssTheme, definitionStyle, modeEffectif, POLICES, surfaceEffective } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -20,34 +19,49 @@ export async function generateMetadata(): Promise<Metadata> {
       "Terminal de marché gratuit : indices, taux, devises, matières premières, banques centrales, calendrier mondial. Données publiques différées, scoring par règles.",
       "Free market terminal: indices, rates, currencies, commodities, central banks, global calendar. Delayed public data, rules-based scoring.",
     ),
+    // Ajout à l'écran d'accueil de l'iPhone : plein écran, barre d'état translucide.
+    appleWebApp: { capable: true, title: "Deepwater", statusBarStyle: "black-translucent" },
   };
 }
 
 export async function generateViewport(): Promise<Viewport> {
   const { theme } = await lirePreferences();
+  const clair = couleursConcretes(theme, false);
+  const sombre = couleursConcretes(theme, true);
   return {
-    themeColor: STYLES.find((s) => s.cle === theme.style)!.fond,
-    colorScheme: styleSombre(theme) ? "dark" : "light",
+    // Contenu jusqu'aux bords de l'écran de l'iPhone (encoche, Dynamic Island) ; marges dans globals.css.
+    viewportFit: "cover",
+    themeColor: modeEffectif(theme) === "auto"
+      ? [
+        { media: "(prefers-color-scheme: light)", color: clair.fond },
+        { media: "(prefers-color-scheme: dark)", color: sombre.fond },
+      ]
+      : sombre.fond,
+    colorScheme: modeEffectif(theme) === "auto" ? "light dark" : sombre.sombre ? "dark" : "light",
   };
 }
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const { langue, theme } = await lirePreferences();
   const t = traducteur(langue);
-  const accent = couleursAccent(theme);
-  const style = STYLES.find((s) => s.cle === theme.style)!;
-  const sombre = styleSombre(theme);
   const base = langue === "en" ? enUS : frFR;
+  // Les fenêtres Clerk ne lisent pas le CSS : couleurs du mode sombre en mode automatique.
+  const c = couleursConcretes(theme, true);
+  const police = POLICES.find((p) => p.cle === (theme.police === "style" ? definitionStyle(theme.style).police : theme.police))!;
 
   return (
     <html
       lang={langue}
       data-style={theme.style}
-      data-densite={theme.densite}
-      data-police={theme.police}
-      style={{ "--color-accent": accent.accent, "--color-accent-clair": accent.clair, "--color-accent-doux": accent.doux } as CSSProperties}
+      data-surface={surfaceEffective(theme)}
+      data-gras={theme.gras ? "1" : undefined}
+      data-transparence={theme.transparenceReduite ? "reduite" : undefined}
+      data-animations={theme.animationsReduites ? "reduites" : undefined}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <style id="theme-utilisateur" dangerouslySetInnerHTML={{ __html: cssTheme(theme) }} />
+      </head>
       <body className="min-h-full">
         <ClerkProvider
           localization={{
@@ -71,20 +85,20 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           }}
           appearance={{
             variables: {
-              colorPrimary: accent.accent,
+              colorPrimary: c.accent,
               colorPrimaryForeground: "#ffffff",
-              colorBackground: style.surface,
-              colorForeground: sombre ? "#e8eaf0" : "#11141b",
-              colorMuted: sombre ? "#161a23" : "#f1f3f7",
-              colorMutedForeground: sombre ? "#8d94a7" : "#525a6c",
-              colorInput: sombre ? "#161a23" : "#ffffff",
-              colorInputForeground: sombre ? "#e8eaf0" : "#11141b",
-              colorNeutral: sombre ? "#e8eaf0" : "#11141b",
-              colorBorder: sombre ? "rgba(255,255,255,0.13)" : "rgba(15,23,42,0.16)",
+              colorBackground: c.surface,
+              colorForeground: c.texte,
+              colorMuted: c.surface2,
+              colorMutedForeground: c.attenue,
+              colorInput: c.surface2,
+              colorInputForeground: c.texte,
+              colorNeutral: c.texte,
+              colorBorder: c.sombre ? "rgba(255,255,255,0.13)" : "rgba(15,23,42,0.16)",
               colorDanger: "#f87171",
               colorSuccess: "#34d399",
-              borderRadius: theme.style === "terminal" ? "0.25rem" : "0.75rem",
-              fontFamily: theme.police === "mono" ? "var(--font-geist-mono)" : "var(--font-geist-sans)",
+              borderRadius: theme.coins === "droits" || (theme.coins === "style" && definitionStyle(theme.style).coins === "droits") ? "0.25rem" : "0.75rem",
+              fontFamily: police.pile,
             },
           }}
         >

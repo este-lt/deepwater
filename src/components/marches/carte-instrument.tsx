@@ -25,7 +25,7 @@ export function CarteInstrument({ ligne, langue, delai = 0 }: { ligne: LigneMarc
   return (
     <article
       style={{ animationDelay: `${delai}ms` }}
-      className="flex min-w-0 flex-col gap-3 rounded-carte border border-bordure bg-surface p-5 animate-apparition"
+      className="carte flex min-w-0 flex-col gap-3 rounded-carte border border-bordure bg-surface p-5 animate-apparition"
     >
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">

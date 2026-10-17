@@ -51,7 +51,7 @@ export default async function PageAdmin() {
   return (
     <>
       <EnTete estAdmin />
-      <main className="mx-auto flex max-w-[90rem] flex-col gap-5 px-4 py-6 sm:px-6">
+      <main className="marges-securite mx-auto flex max-w-[90rem] flex-col gap-5 px-4 py-6 sm:px-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{t("Administration", "Administration")}</h1>
           <p className="text-sm text-attenue">

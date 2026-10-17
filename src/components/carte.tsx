@@ -17,7 +17,7 @@ export function Carte({ titre, sousTitre, actions, pied, children, className = "
     <section
       id={id}
       style={{ animationDelay: `${delai}ms` }}
-      className={`min-w-0 rounded-carte border border-bordure bg-surface p-5 animate-apparition sm:p-6 ${className}`}
+      className={`carte min-w-0 rounded-carte border border-bordure bg-surface p-5 animate-apparition sm:p-6 ${className}`}
     >
       {(titre || actions) && (
         <header className="mb-4 flex flex-wrap items-start justify-between gap-3">

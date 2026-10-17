@@ -31,7 +31,7 @@ export default async function PageRecherche({ searchParams }: { searchParams: Pr
   return (
     <>
       <EnTete estAdmin={etat.etat === "ok" && etat.profil.role === "admin"} />
-      <main className="mx-auto flex max-w-[60rem] flex-col gap-5 px-4 py-6 sm:px-6">
+      <main className="marges-securite mx-auto flex max-w-[60rem] flex-col gap-5 px-4 py-6 sm:px-6">
         <form action="/recherche" role="search" className="flex gap-2">
           <label htmlFor="q-page" className="sr-only">{t("Rechercher un actif ou un mot-clé", "Search an asset or keyword")}</label>
           <input

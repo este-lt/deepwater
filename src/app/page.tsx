@@ -36,7 +36,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
     return (
       <>
         <EnTete estAdmin={false} />
-        <main className="mx-auto max-w-[90rem] px-4 py-6 sm:px-6">
+        <main className="marges-securite mx-auto max-w-[90rem] px-4 py-6 sm:px-6">
           <Carte titre={t("Compte non initialisé", "Account not initialized")} className="border-baisse/40">
             <p className="text-sm text-attenue">{etat.message}</p>
           </Carte>
@@ -138,7 +138,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
     <>
       <EnTete estAdmin={profil?.role === "admin"} />
       <RafraichissementAuto minutes={3} />
-      <main className="mx-auto flex max-w-[90rem] flex-col gap-5 px-4 py-5 sm:px-6">
+      <main className="marges-securite mx-auto flex max-w-[90rem] flex-col gap-5 px-4 py-5 sm:px-6">
         <Reperes evenements={evenements} />
         <Tableau widgets={widgets} disposition={preferences.disposition} />
         <Avertissement />

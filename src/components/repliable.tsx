@@ -27,7 +27,7 @@ export function Repliable({ titre, resume, children }: { titre: string; resume?:
       }}
       className="group/repliable min-w-0"
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-carte border border-bordure bg-surface px-5 py-4 md:hidden [&::-webkit-details-marker]:hidden">
+      <summary className="carte flex cursor-pointer list-none items-center justify-between gap-3 rounded-carte border border-bordure bg-surface px-5 py-4 md:hidden [&::-webkit-details-marker]:hidden">
         <span className="min-w-0">
           <span className="block text-[0.95rem] font-semibold tracking-tight">{titre}</span>
           {resume && <span className="block truncate text-xs text-attenue">{resume}</span>}

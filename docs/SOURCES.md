@@ -185,9 +185,23 @@ Scorings automatiques, ni prédictions ni conseils (`src/lib/analyse.ts`, testé
 ## Personnalisation (par utilisateur, aucun réglage administrateur)
 
 Langue du site (français, anglais : interface, nombres, dates, actualités traduites,
-explications du biais), style (Deepwater, Terminal, Océan, Clair), couleur d'accent,
-densité, police, widgets du tableau de bord (ordre par glisser-déposer, souris, tactile ou
-clavier ; visibilité ; largeur), classes d'actifs. Enregistré dans `parametres_utilisateur`.
+explications du biais), widgets du tableau de bord (ordre par glisser-déposer, souris,
+tactile ou clavier ; visibilité ; largeur), classes d'actifs. Enregistré dans
+`parametres_utilisateur`.
+
+Apparence, sur le modèle des réglages d'un iPhone (`src/lib/theme.ts`, CSS généré par
+utilisateur) :
+
+- 7 styles : Deepwater, iPhone (couleurs système d'iOS, police SF, cartes sans bordure),
+  Graphite (macOS), Nord, Océan, Terminal (toujours sombre), Papier (toujours clair) ;
+- clair, sombre ou automatique (suit le réglage de l'appareil) ;
+- couleur d'accent (couleurs système de l'iPhone ou personnalisée), police (Geist,
+  système, serif, chasse fixe), angles, surfaces (bordures, ombres, verre dépoli) ;
+- taille du texte (6 crans), texte en gras, augmenter le contraste (couleurs système à
+  contraste élevé pour le style iPhone), réduire la transparence, réduire les animations.
+
+Sur iPhone : Safari, Partager, « Sur l'écran d'accueil » ouvre Deepwater en plein écran
+(icône et manifeste publics) ; le contenu respecte l'encoche et la Dynamic Island.
 
 ## Biais quotidien (S&P 500, Nasdaq-100)
 

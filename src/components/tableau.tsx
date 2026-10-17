@@ -43,7 +43,7 @@ function TuileEdition({ id, large, onLargeur, onMasquer }: { id: IdWidget; large
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`${large ? "lg:col-span-2" : ""} ${isDragging ? "z-10 opacity-80 shadow-2xl" : ""} flex min-w-0 items-center gap-3 rounded-carte border border-dashed border-accent/50 bg-surface px-3 py-3`}
+      className={`${large ? "lg:col-span-2" : ""} ${isDragging ? "z-10 opacity-80 shadow-2xl" : ""} carte flex min-w-0 items-center gap-3 rounded-carte border border-dashed border-accent/50 bg-surface px-3 py-3`}
     >
       <button
         type="button"

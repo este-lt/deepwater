@@ -16,7 +16,7 @@ export default async function PageParametres() {
   return (
     <>
       <EnTete estAdmin={etat.etat === "ok" && etat.profil.role === "admin"} />
-      <main className="mx-auto flex max-w-[60rem] flex-col gap-5 px-4 py-6 sm:px-6">
+      <main className="marges-securite mx-auto flex max-w-[60rem] flex-col gap-5 px-4 py-6 sm:px-6">
         <h1 className="text-xl font-semibold tracking-tight">{t("Paramètres", "Settings")}</h1>
         <FormulaireParametres langue={langue} theme={theme} disposition={disposition} classes={classes} />
       </main>

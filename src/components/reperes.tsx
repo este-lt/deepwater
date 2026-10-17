@@ -50,7 +50,7 @@ export function Reperes({ evenements }: { evenements: Evenement[] }) {
   const jour = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl border border-bordure bg-surface px-4 py-2.5 text-sm">
+    <div className="carte flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl border border-bordure bg-surface px-4 py-2.5 text-sm">
       <span className="inline-flex items-center gap-2" title={t("Horaires réguliers, jours fériés non pris en compte", "Regular hours, holidays not included")}>
         <span
           aria-hidden

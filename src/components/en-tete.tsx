@@ -9,8 +9,8 @@ const LIEN = "whitespace-nowrap rounded-lg px-2.5 py-1.5 text-attenue transition
 export async function EnTete({ estAdmin }: { estAdmin: boolean }) {
   const t = traducteur((await lirePreferences()).langue);
   return (
-    <header className="sticky top-0 z-20 border-b border-bordure bg-fond/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-3 px-4 py-3 sm:px-6">
+    <header className="barre-haute sticky top-0 z-20 border-b border-bordure bg-fond/75 backdrop-blur-xl backdrop-saturate-150">
+      <div className="marges-securite mx-auto flex max-w-[90rem] items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link href="/" className="shrink-0 rounded-lg">
           <Logo />
         </Link>

@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState, useTransition } from "react";
-import { choisirClasses, choisirDisposition, choisirLangue, choisirTheme } from "@/app/actions";
+import { choisirClasses, choisirDisposition, choisirLangue } from "@/app/actions";
 import { Carte } from "@/components/carte";
 import { useLangue } from "@/components/langue";
+import { ReglagesApparence } from "@/components/parametres/apparence";
 import { type Langue, LANGUES } from "@/lib/i18n";
 import { CLASSES } from "@/lib/sources";
-import { ACCENTS, couleursAccent, type Densite, type Police, STYLES, type Theme } from "@/lib/theme";
+import type { Theme } from "@/lib/theme";
 import { type Disposition, WIDGETS } from "@/lib/widgets";
 
 function Choix({ actif, onClick, children, className = "" }: { actif: boolean; onClick: () => void; children: ReactNode; className?: string }) {
@@ -25,18 +26,6 @@ function Choix({ actif, onClick, children, className = "" }: { actif: boolean; o
   );
 }
 
-// Aperçu immédiat : le thème est appliqué sur <html> avant même l'enregistrement.
-function appliquer(theme: Theme) {
-  const racine = document.documentElement;
-  const c = couleursAccent(theme);
-  racine.dataset.style = theme.style;
-  racine.dataset.densite = theme.densite;
-  racine.dataset.police = theme.police;
-  racine.style.setProperty("--color-accent", c.accent);
-  racine.style.setProperty("--color-accent-clair", c.clair);
-  racine.style.setProperty("--color-accent-doux", c.doux);
-}
-
 export function FormulaireParametres({ langue: langueInitiale, theme: themeInitial, disposition: dispositionInitiale, classes: classesInitiales }: {
   langue: Langue;
   theme: Theme;
@@ -47,7 +36,8 @@ export function FormulaireParametres({ langue: langueInitiale, theme: themeIniti
   const router = useRouter();
   const [enCours, demarrer] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const [theme, setTheme] = useState(themeInitial);
+  // Les réglages d'apparence enregistrent eux-mêmes et signalent leur état ici.
+  const [apparenceEnCours, setApparenceEnCours] = useState(false);
   const [disposition, setDisposition] = useState(dispositionInitiale);
   const [classes, setClasses] = useState(classesInitiales);
 
@@ -57,20 +47,6 @@ export function FormulaireParametres({ langue: langueInitiale, theme: themeIniti
       setMessage(r.message);
       if (rafraichir) router.refresh();
     });
-
-  const changerTheme = (modif: Partial<Theme>) => {
-    const suivant = { ...theme, ...modif };
-    // Changer de style reprend la police et l'accent propres à ce style.
-    if (modif.style) {
-      suivant.police = modif.style === "terminal" ? "mono" : "sans";
-      suivant.accent = null;
-    }
-    setTheme(suivant);
-    appliquer(suivant);
-    enregistrer(() => choisirTheme(suivant));
-  };
-
-  const accentActuel = couleursAccent(theme).accent;
 
   return (
     <div className="flex flex-col gap-5">
@@ -90,73 +66,13 @@ export function FormulaireParametres({ langue: langueInitiale, theme: themeIniti
         </p>
       </Carte>
 
-      <Carte titre={t("Apparence", "Appearance")} sousTitre={t("Style, couleur d'accent, densité, police. Aperçu immédiat.", "Style, accent colour, density, font. Instant preview.")}>
-        <div className="flex flex-col gap-5">
-          <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">{t("Style", "Style")}</h3>
-            <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(100%,12rem),1fr))]">
-              {STYLES.map((s) => (
-                <Choix key={s.cle} actif={theme.style === s.cle} onClick={() => changerTheme({ style: s.cle })} className="flex flex-col gap-2">
-                  <span className="flex h-12 overflow-hidden rounded-lg border border-bordure" aria-hidden style={{ background: s.fond }}>
-                    <span className="m-1.5 flex-1 rounded-md" style={{ background: s.surface }} />
-                    <span className="my-3 mr-2 w-6 rounded" style={{ background: s.accent }} />
-                  </span>
-                  <span className="font-medium text-texte">{t(s.fr, s.en)}</span>
-                  <span className="text-xs">{t(s.descriptionFr, s.descriptionEn)}</span>
-                </Choix>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">{t("Couleur d'accent", "Accent colour")}</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <Choix actif={theme.accent === null} onClick={() => changerTheme({ accent: null })}>{t("Celle du style", "Style default")}</Choix>
-              {ACCENTS.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  aria-label={a}
-                  aria-pressed={theme.accent === a}
-                  onClick={() => changerTheme({ accent: a })}
-                  className={`size-8 rounded-full border-2 transition-transform hover:scale-110 ${theme.accent === a ? "border-texte" : "border-transparent"}`}
-                  style={{ background: a }}
-                />
-              ))}
-              <label className="inline-flex items-center gap-2 text-sm text-attenue">
-                <input
-                  type="color"
-                  value={accentActuel}
-                  onChange={(e) => changerTheme({ accent: e.target.value })}
-                  className="size-8 cursor-pointer rounded-full border border-bordure bg-transparent"
-                />
-                {t("Personnalisée", "Custom")}
-              </label>
-            </div>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">{t("Densité", "Density")}</h3>
-              <div className="flex flex-wrap gap-2">
-                {([["confortable", "Confortable", "Comfortable"], ["compacte", "Compacte (plus d'informations à l'écran)", "Compact (more on screen)"]] as [Densite, string, string][]).map(([cle, fr, en]) => (
-                  <Choix key={cle} actif={theme.densite === cle} onClick={() => changerTheme({ densite: cle })}>{t(fr, en)}</Choix>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-discret">{t("Police", "Font")}</h3>
-              <div className="flex flex-wrap gap-2">
-                {([["sans", "Classique", "Sans-serif"], ["mono", "Chasse fixe (terminal)", "Monospace (terminal)"]] as [Police, string, string][]).map(([cle, fr, en]) => (
-                  <Choix key={cle} actif={theme.police === cle} onClick={() => changerTheme({ police: cle })} className={cle === "mono" ? "font-mono" : "font-sans"}>
-                    {t(fr, en)}
-                  </Choix>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </Carte>
+      <ReglagesApparence
+        theme={themeInitial}
+        onMessage={(m, enCoursApparence) => {
+          setApparenceEnCours(enCoursApparence);
+          if (m) setMessage(m);
+        }}
+      />
 
       <Carte
         titre={t("Tableau de bord", "Dashboard")}
@@ -220,8 +136,8 @@ export function FormulaireParametres({ langue: langueInitiale, theme: themeIniti
         </div>
       </Carte>
 
-      <p role="status" aria-live="polite" className={`text-sm ${enCours ? "animate-chargement text-attenue" : "text-attenue"}`}>
-        {enCours ? t("Enregistrement…", "Saving…") : message}
+      <p role="status" aria-live="polite" className={`text-sm ${enCours || apparenceEnCours ? "animate-chargement text-attenue" : "text-attenue"}`}>
+        {enCours || apparenceEnCours ? t("Enregistrement…", "Saving…") : message}
       </p>
       <p className="text-xs text-discret">
         {t("Compte (e-mail, mot de passe, sessions) : menu de votre avatar, en haut à droite.", "Account (email, password, sessions): your avatar menu, top right.")}

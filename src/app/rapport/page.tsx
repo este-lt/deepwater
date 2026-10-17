@@ -135,7 +135,7 @@ export default async function PageRapport({ searchParams }: { searchParams: Prom
   return (
     <>
       <EnTete estAdmin={etat.etat === "ok" && etat.profil.role === "admin"} />
-      <main className="mx-auto flex max-w-[60rem] flex-col gap-5 px-4 py-6 sm:px-6">
+      <main className="marges-securite mx-auto flex max-w-[60rem] flex-col gap-5 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">{titre}</h1>

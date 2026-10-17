@@ -53,7 +53,7 @@ export function Moniteur({ lignes, classes }: { lignes: LigneMarche[]; classes: 
   const dernier = (l: LigneMarche) => `${formaterNombre(l.cloture, l.decimales, langue)}${l.unite === "%" ? pct(langue) : ""}`;
 
   return (
-    <section aria-labelledby="titre-marches" className="flex min-w-0 flex-col gap-3 rounded-carte border border-bordure bg-surface p-4 animate-apparition sm:p-5">
+    <section aria-labelledby="titre-marches" className="carte flex min-w-0 flex-col gap-3 rounded-carte border border-bordure bg-surface p-4 animate-apparition sm:p-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="titre-marches" className="text-[0.95rem] font-semibold tracking-tight">{t("Marchés", "Markets")}</h2>
         <div role="group" aria-label={t("Classes d'actifs affichées", "Asset classes shown")} className="flex flex-wrap gap-1.5">
