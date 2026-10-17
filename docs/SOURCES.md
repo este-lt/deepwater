@@ -167,18 +167,24 @@ Filtre (`supabase/functions/_shared/filtre-actualites.ts`, règles modifiables) 
 
 Scorings automatiques, ni prédictions ni conseils (`src/lib/analyse.ts`, testé).
 
-- **Régime risk-on / risk-off** (5 séances) : S&P 500 (25 %), VIX (20 %), spread haut
-  rendement (15 %), AUD/JPY (20 %), USD/CHF (10 %), or (10 %). Risk-on au-dessus de +25,
-  risk-off sous −25.
-- **Corrélations** : variations quotidiennes sur 20 et 60 séances communes (S&P 500,
+**Aucun biais ne repose sur l'analyse technique** (ni moyenne mobile, ni momentum, ni
+variation de cours, ni niveau graphique) : uniquement des données concrètes.
+
+- **Régime risk-on / risk-off** : peur mesurée par les options (VIX face à sa médiane sur
+  4 mois et variation sur 5 séances, 40 %), prime de risque de crédit (spread haut
+  rendement sur 5 séances, 35 %), conditions financières (NFCI de la Fed de Chicago, niveau
+  et variation sur 4 semaines, 25 %). Risk-on au-dessus de +25, risk-off sous −25.
+- **Corrélations** (information, pas un biais) : variations quotidiennes sur 20 et 60 séances communes (S&P 500,
   Nasdaq-100, 10 ans, VIX, EUR, JPY, AUD, or, WTI, bitcoin). **Couverture** : actif détenable
   le plus négativement corrélé au S&P 500 sur 60 séances (or, yen, franc suisse, obligations),
   proposé seulement sous −0,2.
-- **Force des 8 devises** : momentum contre le panier (5 et 20 séances, cours BCE) 35 %,
-  taux directeur et taux réel 20 %, orientation de la banque centrale 20 %, croissance et
-  emploi 10 %, régime 15 % (devises de risque AUD, NZD, CAD contre refuges JPY, CHF, USD).
-- **Paires** : devise forte contre devise faible ; étoiles = nombre de facteurs qui vont
-  dans le même sens (5 étoiles : tous).
+- **Force des 8 devises** (cinq facteurs fondamentaux) : portage, taux directeur face à la
+  moyenne des 8 (20 %) ; taux réel, taux directeur moins inflation (20 %) ; orientation de la
+  banque centrale (25 %) ; croissance et emploi, PIB et évolution du chômage (15 %) ;
+  sentiment risk-on/risk-off (20 %, devises de risque AUD, NZD, CAD contre refuges JPY,
+  CHF, USD).
+- **Paires** : devise forte contre devise faible ; étoiles = nombre des cinq facteurs qui
+  vont dans le même sens (5 étoiles : tous).
 - **Rapports** quotidien et hebdomadaire (`/rapport`) : synthèse rédigée par règles, banques
   centrales, agenda, plus forts mouvements, fil instantané ; dans la langue de l'utilisateur.
 
@@ -210,14 +216,19 @@ investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
 | Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
 |---|---|---|
-| Tendance | clôture face aux moyennes mobiles 20 et 50 jours | 35 % / 35 % |
-| Taux longs | 10 ans : variation sur 5 séances, écart à sa moyenne d'un an | 20 % / 25 % |
-| Surprise macro | publications des 45 derniers jours comparées aux précédentes | 15 % / 10 % |
-| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 30 % / 30 % |
+Uniquement des données concrètes, aucune analyse technique (règles du 17/10/2026).
+
+| Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
+|---|---|---|
+| Politique de la Fed | ce que le marché anticipe (taux à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 25 % / 25 % |
+| Taux longs | variation sur 5 séances du taux à 10 ans (60 %) et du taux réel à 10 ans (40 %) | 20 % / 25 % |
+| Surprise macro | publications des 45 derniers jours comparées aux précédentes | 20 % / 15 % |
+| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 20 % / 20 % |
+| Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 15 % / 15 % |
 
 Note de −1 à +1 par facteur, moyenne pondérée, haussier ≥ +0,2, baissier ≤ −0,2.
-Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais sans le cours
-de l'indice ou avec moins de la moitié du poids. Calcul unique pour tous, depuis la base
+Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais avec moins de
+la moitié du poids. Le cours de l'indice n'entre plus dans le calcul. Calcul unique pour tous, depuis la base
 seulement ; automatique à 8 h 30 (New York) si un utilisateur l'active, sinon manuel
 (un calcul toutes les 5 minutes par compte). Jours fériés boursiers non gérés.
 

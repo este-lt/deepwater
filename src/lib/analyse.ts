@@ -1,6 +1,9 @@
 // Analyses par règles, calculées à partir des données déjà en base (aucun appel externe) :
 // régime risk-on / risk-off, corrélations entre actifs, force des 8 grandes devises et
-// paires classées par confluence. Scoring automatique, pas un conseil en investissement.
+// paires classées par confluence. Les biais (régime, devises) ne reposent que sur des
+// données concrètes (taux, banques centrales, macro, volatilité implicite, crédit,
+// conditions financières) : aucun indicateur ni concept d'analyse technique.
+// Scoring automatique, pas un conseil en investissement.
 // Fonctions pures (aucune dépendance) : testées par supabase/../analyse.test.ts.
 
 export type Serie = { date: string; cloture: number }[];
@@ -19,18 +22,16 @@ export function variation(serie: Serie, n: number, mode: "pct" | "pts" = "pct"):
   return debut === 0 ? null : (fin / debut - 1) * 100;
 }
 
-// Produit de deux séries aux dates communes (croisé AUD/JPY = AUD/USD × USD/JPY).
-export function produit(a: Serie, b: Serie): Serie {
-  const parDate = new Map(b.map((p) => [p.date, p.cloture]));
-  return a.flatMap((p) => (parDate.has(p.date) ? [{ date: p.date, cloture: p.cloture * parDate.get(p.date)! }] : []));
-}
-
 // ---------------------------------------------------------------------------- Régime
 
+// Sentiment de marché à partir de mesures concrètes, sans variation de prix ni indicateur
+// technique : peur mesurée par les options (VIX), prime de risque de crédit (spread haut
+// rendement), conditions financières (indice NFCI de la Fed de Chicago).
 export interface Composante {
-  cle: "actions" | "volatilite" | "credit" | "audjpy" | "franc" | "or";
-  valeur: number | null; // variation sur 5 séances
-  unite: "pct" | "pts" | "pb";
+  cle: "volatilite" | "credit" | "conditions";
+  niveau: number | null;
+  variation: number | null; // VIX : points sur 5 séances ; spread : pb sur 5 séances ; NFCI : sur 4 semaines
+  reference: number | null; // VIX : médiane de la période lue (environ 4 mois)
   note: number | null; // -1 risk-off … +1 risk-on
   poids: number;
 }
@@ -44,25 +45,41 @@ export interface Regime {
 
 export const SEUIL_REGIME = 0.25;
 
+const mediane = (v: number[]) => {
+  const t = [...v].sort((a, b) => a - b);
+  return t.length ? t[Math.floor(t.length / 2)] : null;
+};
+
 export function calculerRegime(s: Record<string, Serie>): Regime {
-  const n = 5;
-  const v = (sym: string, mode: "pct" | "pts" = "pct") => variation(s[sym] ?? [], n, mode);
-  const audjpy = produit(s.AUDUSD ?? [], s.USDJPY ?? []);
-  const hy = v("HY", "pts");
-  const brutes: [Composante["cle"], number | null, Composante["unite"], (x: number) => number, number][] = [
-    ["actions", v("SPX"), "pct", (x) => x / 3, 0.25],
-    ["volatilite", v("VIX", "pts"), "pts", (x) => -x / 4, 0.2],
-    ["credit", hy === null ? null : hy * 100, "pb", (x) => -x / 30, 0.15],
-    ["audjpy", variation(audjpy, n), "pct", (x) => x / 2, 0.2],
-    ["franc", v("USDCHF"), "pct", (x) => x / 1.5, 0.1],
-    ["or", v("XAU"), "pct", (x) => -x / 3, 0.1],
+  const vix = s.VIX ?? [];
+  const hy = s.HY ?? [];
+  const nfci = s.NFCI ?? [];
+  const dernier = (x: Serie) => x.at(-1)?.cloture ?? null;
+
+  const niveauVix = dernier(vix);
+  const medianeVix = mediane(vix.map((p) => p.cloture));
+  const varVix = variation(vix, 5, "pts");
+  const noteVix = niveauVix === null || medianeVix === null || varVix === null
+    ? null
+    : -(0.5 * borner((niveauVix - medianeVix) / 8) + 0.5 * borner(varVix / 5));
+
+  const varHy = variation(hy, 5, "pts");
+  const noteHy = varHy === null ? null : -borner(varHy / 0.4);
+
+  const niveauNfci = dernier(nfci);
+  const varNfci = variation(nfci, 4, "pts");
+  const noteNfci = niveauNfci === null
+    ? null
+    : varNfci === null ? -borner(niveauNfci / 0.5) : -(0.6 * borner(niveauNfci / 0.5) + 0.4 * borner(varNfci / 0.15));
+
+  const composantes: Composante[] = [
+    { cle: "volatilite", niveau: niveauVix, variation: varVix, reference: medianeVix, note: noteVix, poids: 0.4 },
+    { cle: "credit", niveau: dernier(hy), variation: varHy === null ? null : varHy * 100, reference: null, note: noteHy, poids: 0.35 },
+    { cle: "conditions", niveau: niveauNfci, variation: varNfci, reference: null, note: noteNfci, poids: 0.25 },
   ];
-  const composantes = brutes.map(([cle, valeur, unite, echelle, poids]) => ({
-    cle, valeur, unite, poids, note: valeur === null ? null : borner(echelle(valeur)),
-  }));
   const valides = composantes.filter((c) => c.note !== null);
   const poids = valides.reduce((a, c) => a + c.poids, 0);
-  const date = s.SPX?.at(-1)?.date ?? null;
+  const date = vix.at(-1)?.date ?? hy.at(-1)?.date ?? null;
   if (poids < 0.5) return { score: null, etat: "indisponible", composantes, date };
   const score = valides.reduce((a, c) => a + c.note! * c.poids, 0) / poids;
   return { score, etat: score >= SEUIL_REGIME ? "risk-on" : score <= -SEUIL_REGIME ? "risk-off" : "neutre", composantes, date };
@@ -143,7 +160,6 @@ export interface Point {
 }
 
 export interface EntreeDevises {
-  fx: Record<string, Serie>; // EURUSD, USDJPY, GBPUSD, USDCHF, USDCAD, AUDUSD, NZDUSD
   decisions: Partial<Record<Devise, Point[]>>; // changements de taux directeur, dans l'ordre
   inflation: Partial<Record<Devise, Point[]>>;
   chomage: Partial<Record<Devise, Point[]>>;
@@ -152,8 +168,9 @@ export interface EntreeDevises {
   aujourdhui: string;
 }
 
-export type CleFacteur = "momentum" | "taux" | "orientation" | "macro" | "regime";
-export const POIDS_DEVISES: Record<CleFacteur, number> = { momentum: 0.35, taux: 0.2, orientation: 0.2, macro: 0.1, regime: 0.15 };
+// Cinq facteurs fondamentaux, cinq étoiles possibles pour une paire.
+export type CleFacteur = "portage" | "tauxReel" | "orientation" | "macro" | "regime";
+export const POIDS_DEVISES: Record<CleFacteur, number> = { portage: 0.2, tauxReel: 0.2, orientation: 0.25, macro: 0.15, regime: 0.2 };
 // Sensibilité au régime : devises de risque (AUD, NZD, CAD) contre valeurs refuges (JPY, CHF, USD).
 const SENSIBILITE: Record<Devise, number> = { AUD: 1, NZD: 1, CAD: 0.6, GBP: 0.3, EUR: 0, USD: -0.6, CHF: -0.8, JPY: -1 };
 
@@ -161,49 +178,16 @@ export interface ForceDevise {
   devise: Devise;
   score: number | null;
   facteurs: Record<CleFacteur, number | null>;
-  var5j: number | null; // contre le panier des 7 autres, en %
-  var20j: number | null;
   tauxDirecteur: number | null;
   tauxReel: number | null;
   dernierMouvement: { date: string; ecartPb: number } | null;
   orientation: "restrictive" | "accommodante" | "neutre";
 }
 
-// Valeur de chaque devise en dollars, aux dates où tous les cours BCE disponibles existent
-// (une paire sans historique, par exemple ajoutée récemment, est simplement écartée).
-function valeursEnDollars(fx: Record<string, Serie>): Partial<Record<Devise, number[]>> {
-  const sources: [Devise, string, boolean][] = [
-    ["EUR", "EURUSD", false], ["GBP", "GBPUSD", false], ["AUD", "AUDUSD", false], ["NZD", "NZDUSD", false],
-    ["JPY", "USDJPY", true], ["CHF", "USDCHF", true], ["CAD", "USDCAD", true],
-  ].filter(([, sym]) => (fx[sym as string]?.length ?? 0) > 25) as [Devise, string, boolean][];
-  if (sources.length === 0) return {};
-  const cartes = sources.map(([, sym]) => new Map(fx[sym].map((p) => [p.date, p.cloture])));
-  const dates = [...cartes[0].keys()].filter((d) => cartes.every((c) => c.has(d))).sort();
-  const valeurs: Partial<Record<Devise, number[]>> = { USD: dates.map(() => 1) };
-  sources.forEach(([dev, , inverse], i) => {
-    valeurs[dev] = dates.map((d) => (inverse ? 1 / cartes[i].get(d)! : cartes[i].get(d)!));
-  });
-  return valeurs;
-}
-
-// Variation de chaque devise contre la moyenne des devises disponibles (en %), sur n séances.
-function forceRelative(valeurs: Partial<Record<Devise, number[]>>, n: number): Partial<Record<Devise, number>> | null {
-  const longueur = valeurs.USD?.length ?? 0;
-  if (longueur <= n) return null;
-  const presentes = DEVISES.filter((d) => valeurs[d]);
-  const brutes = Object.fromEntries(presentes.map((d) => [d, Math.log(valeurs[d]![longueur - 1] / valeurs[d]![longueur - 1 - n]) * 100]));
-  const m = moyenne(Object.values(brutes));
-  return Object.fromEntries(presentes.map((d) => [d, brutes[d] - m]));
-}
-
 const derniere = (p?: Point[]) => (p && p.length ? p[p.length - 1] : null);
 const joursEntre = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
 
 export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
-  const valeurs = valeursEnDollars(e.fx);
-  const f5 = forceRelative(valeurs, 5);
-  const f20 = forceRelative(valeurs, 20);
-
   const taux = Object.fromEntries(DEVISES.map((d) => [d, derniere(e.decisions[d])?.valeur ?? null])) as Record<Devise, number | null>;
   const reels = Object.fromEntries(DEVISES.map((d) => {
     const i = derniere(e.inflation[d]);
@@ -214,9 +198,9 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
   const mPib = moyenne(DEVISES.flatMap((d) => (derniere(e.pib[d]) ? [derniere(e.pib[d])!.valeur] : [])));
 
   return DEVISES.map((d): ForceDevise => {
-    const momentum = f5?.[d] !== undefined && f20?.[d] !== undefined ? borner(0.5 * (f5[d]! / 1) + 0.5 * (f20[d]! / 2)) : null;
-
-    const noteTaux = taux[d] === null ? null : borner(reels[d] === null ? (taux[d]! - mTaux) / 2 : 0.5 * ((taux[d]! - mTaux) / 2) + 0.5 * ((reels[d]! - mReels) / 2));
+    // Portage : taux directeur face à la moyenne des 8 ; taux réel : taux directeur moins inflation.
+    const portage = taux[d] === null ? null : borner((taux[d]! - mTaux) / 2);
+    const tauxReel = reels[d] === null ? null : borner((reels[d]! - mReels) / 2);
 
     // Orientation : sens du dernier mouvement de taux (moins de 200 jours), renforcé si le
     // précédent allait dans le même sens ; tendance de l'inflation en appoint.
@@ -239,6 +223,7 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
       orientation = borner(orientation + (delta > 0.3 ? 0.3 : delta < -0.3 ? -0.3 : 0));
     }
 
+    // Croissance et emploi : PIB sur 1 trimestre face à la moyenne, recul du chômage.
     const pib = derniere(e.pib[d]);
     const ch = e.chomage[d] ?? [];
     const recul = ch.length >= 4 ? ch[ch.length - 1].valeur - ch[ch.length - 4].valeur : null;
@@ -247,7 +232,7 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
 
     const regime = e.regime === null ? null : borner(e.regime * SENSIBILITE[d]);
 
-    const facteurs = { momentum, taux: noteTaux, orientation, macro, regime };
+    const facteurs = { portage, tauxReel, orientation, macro, regime };
     const valides = (Object.keys(facteurs) as CleFacteur[]).filter((k) => facteurs[k] !== null);
     const poids = valides.reduce((a, k) => a + POIDS_DEVISES[k], 0);
     const score = poids >= 0.5 ? valides.reduce((a, k) => a + facteurs[k]! * POIDS_DEVISES[k], 0) / poids : null;
@@ -256,8 +241,6 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
       devise: d,
       score,
       facteurs,
-      var5j: f5?.[d] ?? null,
-      var20j: f20?.[d] ?? null,
       tauxDirecteur: taux[d],
       tauxReel: reels[d],
       dernierMouvement,

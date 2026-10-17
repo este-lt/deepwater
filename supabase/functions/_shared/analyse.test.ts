@@ -7,7 +7,6 @@ import {
   correlation,
   couvertures,
   matriceCorrelations,
-  produit,
   type Serie,
   variation,
 } from "../../../src/lib/analyse.ts";
@@ -25,28 +24,20 @@ Deno.test("Variation sur n séances, en % ou en points", () => {
   assertEquals(variation(s, 6), null);
 });
 
-Deno.test("Croisé AUD/JPY aux dates communes", () => {
-  const a = serie([0.7, 0.71]);
-  const b = [{ date: jours(2)[1], cloture: 150 }];
-  assertEquals(produit(a, b), [{ date: jours(2)[1], cloture: 0.71 * 150 }]);
-});
-
-Deno.test("Régime : actions en hausse, VIX et spreads en baisse, AUD/JPY en hausse = risk-on", () => {
+Deno.test("Régime : VIX sous sa médiane et en baisse, spread qui se resserre, conditions souples = risk-on", () => {
   const n = 30;
   const r = calculerRegime({
-    SPX: lineaire(n, 5000, 20), // +2 % environ sur 5 séances
-    VIX: lineaire(n, 25, -0.6),
+    VIX: lineaire(n, 25, -0.6), // de 25 à 7,6 : sous la médiane et en baisse
     HY: lineaire(n, 3.5, -0.02),
-    AUDUSD: lineaire(n, 0.65, 0.002),
-    USDJPY: lineaire(n, 145, 0.3),
-    USDCHF: lineaire(n, 0.8, 0.001),
-    XAU: lineaire(n, 3000, -10),
+    NFCI: lineaire(8, -0.3, -0.03),
   });
   assertEquals(r.etat, "risk-on");
   assert(r.score! > 0.5);
-  const inverse = calculerRegime({ SPX: lineaire(n, 5000, -25), VIX: lineaire(n, 15, 1), HY: lineaire(n, 3, 0.03), XAU: lineaire(n, 3000, 15) });
+  assertEquals(r.composantes.map((c) => c.cle), ["volatilite", "credit", "conditions"]);
+  const inverse = calculerRegime({ VIX: lineaire(n, 15, 1), HY: lineaire(n, 3, 0.03), NFCI: lineaire(8, 0.2, 0.05) });
   assertEquals(inverse.etat, "risk-off");
-  assertEquals(calculerRegime({ SPX: lineaire(n, 5000, 1) }).etat, "indisponible");
+  // Aucune variation de cours d'actions ou de devises n'entre dans le régime.
+  assertEquals(calculerRegime({ SPX: lineaire(n, 5000, 50), AUDUSD: lineaire(n, 0.6, 0.01) }).etat, "indisponible");
 });
 
 Deno.test("Corrélations : identique = 1, opposée = -1, matrice symétrique", () => {
@@ -63,29 +54,20 @@ Deno.test("Corrélations : identique = 1, opposée = -1, matrice symétrique", (
   assertEquals(c[0].cle, "or");
 });
 
-Deno.test("Force des devises : AUD fort (momentum, taux, hausse de taux) contre JPY faible", () => {
-  const n = 40;
-  const fx = {
-    EURUSD: lineaire(n, 1.1, 0),
-    GBPUSD: lineaire(n, 1.3, 0),
-    AUDUSD: lineaire(n, 0.65, 0.002), // l'AUD monte
-    NZDUSD: lineaire(n, 0.6, 0),
-    USDJPY: lineaire(n, 140, 0.5), // le yen baisse
-    USDCHF: lineaire(n, 0.8, 0),
-    USDCAD: lineaire(n, 1.35, 0),
-  };
+Deno.test("Force des devises : AUD fort (portage, taux réel, hausses de taux, croissance) contre JPY faible", () => {
   const d = (date: string, valeur: number) => ({ date, valeur });
+  const serie4 = (valeurs: number[]) => valeurs.map((v, i) => d(`2026-0${i + 4}-01`, v));
   const forces = calculerForceDevises({
-    fx,
     decisions: {
       AUD: [d("2025-01-01", 3.6), d("2026-05-06", 4.35), d("2026-09-30", 4.6)],
       JPY: [d("2024-03-19", 0.1), d("2025-01-24", 0.5)],
       USD: [d("2025-12-11", 3.625)], EUR: [d("2026-06-17", 2.25)], GBP: [d("2025-12-18", 3.75)],
       CHF: [d("2025-06-20", 0)], CAD: [d("2025-10-30", 2.25)], NZD: [d("2026-09-03", 2.75)],
     },
-    inflation: {},
-    chomage: {},
-    pib: {},
+    // Taux réel : AUD 4,6 - 3,0 ; JPY 0,5 - 3,0 (négatif).
+    inflation: { AUD: serie4([3, 3, 3, 3]), JPY: serie4([3, 3, 3, 3]) },
+    chomage: { AUD: serie4([4.6, 4.5, 4.4, 4.3]), JPY: serie4([2.4, 2.5, 2.6, 2.7]) },
+    pib: { AUD: [d("2026-04-01", 0.9)], JPY: [d("2026-04-01", -0.2)], USD: [d("2026-04-01", 0.5)] },
     regime: 0.5,
     aujourdhui: "2026-10-17",
   });
@@ -96,5 +78,7 @@ Deno.test("Force des devises : AUD fort (momentum, taux, hausse de taux) contre 
   const paires = classerPaires(forces);
   assertEquals(paires[0].paire, "AUD/JPY");
   assertEquals(paires[0].sens, "achat");
-  assert(paires[0].etoiles >= 4);
+  // Les cinq facteurs fondamentaux vont dans le même sens : 5 étoiles.
+  assertEquals(paires[0].etoiles, 5);
+  assertEquals(Object.keys(forces[0].facteurs), ["portage", "tauxReel", "orientation", "macro", "regime"]);
 });

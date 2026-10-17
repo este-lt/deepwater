@@ -118,7 +118,8 @@ export const ACTIFS_CORRELATION = [
   { symbole: "BTC", mode: "pct" as const },
 ];
 
-const SYMBOLES = ["SPX", "NDX", "VIX", "HY", "US10Y", "EURUSD", "USDJPY", "GBPUSD", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD", "XAU", "WTI", "BTC"];
+// Corrélations (cours) et régime (VIX, spread haut rendement, conditions financières).
+const SYMBOLES = ["SPX", "NDX", "VIX", "HY", "NFCI", "US10Y", "EURUSD", "USDJPY", "USDCHF", "AUDUSD", "XAU", "WTI", "BTC"];
 
 export interface EtatAnalyses {
   regime: Regime;
@@ -127,14 +128,13 @@ export interface EtatAnalyses {
   couvertures: Couverture[];
   forces: ForceDevise[];
   paires: Paire[];
-  dateFx: string | null;
+  dateMacro: string | null;
 }
 
 export async function lireAnalyses(supabase: ClientSupabase, monde: EtatMonde): Promise<EtatAnalyses> {
   const clotures = Object.fromEntries(await lireClotures(supabase, SYMBOLES, 130));
   const regime = calculerRegime(clotures);
   const forces = calculerForceDevises({
-    fx: clotures,
     decisions: monde.decisions,
     inflation: monde.inflation,
     chomage: monde.chomage,
@@ -149,6 +149,6 @@ export async function lireAnalyses(supabase: ClientSupabase, monde: EtatMonde): 
     couvertures: couvertures(clotures),
     forces,
     paires: classerPaires(forces),
-    dateFx: clotures.EURUSD?.at(-1)?.date ?? null,
+    dateMacro: monde.majLe,
   };
 }

@@ -1,10 +1,11 @@
 // deno test supabase/functions/calcul-biais
 import {
   combiner,
+  facteurConditions,
+  facteurFed,
   facteurMacro,
   facteurRisque,
   facteurTaux,
-  facteurTendance,
   type PointTaux,
   seanceVisee,
 } from "./facteurs.ts";
@@ -12,6 +13,9 @@ import {
 function egal<T>(libelle: string, reel: T, attendu: T) {
   if (reel !== attendu) throw new Error(`${libelle} : obtenu ${reel}, attendu ${attendu}`);
 }
+
+const jourAvant = (n: number, fin = "2026-10-16") => new Date(Date.parse(fin) - n * 86_400_000).toISOString().slice(0, 10);
+const point = (n: number, taux: number): PointTaux => ({ date: jourAvant(n), taux });
 
 Deno.test("séance visée : heure de New York, changement d'heure et week-end", () => {
   // 16/10/2026 14:00 UTC = 10:00 à New York (heure d'été) : séance du jour.
@@ -24,27 +28,33 @@ Deno.test("séance visée : heure de New York, changement d'heure et week-end", 
   egal("samedi", seanceVisee(new Date("2026-03-08T03:00:00Z")), "2026-03-09");
 });
 
-Deno.test("tendance : écarts aux moyennes mobiles, donnée trop ancienne", () => {
-  const f = facteurTendance("SPX", { date: "2026-10-15", cloture: 102, mm20: 100, mm50: 98, source: "fred:SP500" }, "2026-10-16");
-  // +2 % / 2 % = +1 (moitié) ; +4,08 % / 4 % = +1 borné (moitié) -> +1.
-  egal("note pleine", f.note, 1);
-  if (!f.texte.includes("2,0 % au-dessus de la MM20")) throw new Error(f.texte);
-  // Même explication en anglais (site bilingue).
-  if (!f.texte_en.includes("2.0% above the 20-day MA") || f.libelle_en !== "Trend (moving averages)") throw new Error(f.texte_en);
-  const vieux = facteurTendance("SPX", { date: "2026-10-01", cloture: 102, mm20: 100, mm50: 98, source: "fred:SP500" }, "2026-10-16");
-  egal("trop ancien", vieux.statut, "indisponible");
+Deno.test("Fed : hausses anticipées par le taux à 2 ans et hausse décidée = baissier", () => {
+  // Valeurs réelles du 15/10/2026 : 2 ans 4,77 %, Fed funds 3,88 %, hausse de 25 pb le 17/09/2026.
+  const decisions = [{ date: "2025-10-30", taux: 3.875 }, { date: "2025-12-11", taux: 3.625 }, { date: "2026-09-17", taux: 3.875 }];
+  const f = facteurFed("SPX", [point(1, 4.77)], [point(1, 3.88)], decisions, "2026-10-16");
+  // Anticipation : -borner(0,89 / 0,5) = -1 ; décision : hausse, sens inverse de la précédente -> -0,6.
+  egal("note", f.note, -0.84);
+  if (!f.texte.includes("le marché anticipe des hausses de taux") || !f.texte.includes("hausse de 25 pb") || f.texte.endsWith("..")) throw new Error(f.texte);
+  if (!f.texte_en.includes("prices in rate hikes") || f.libelle_en !== "Fed policy") throw new Error(f.texte_en);
+  // Baisses anticipées et baisse décidée = haussier.
+  const baisse = facteurFed("SPX", [point(1, 3.4)], [point(1, 3.88)], [{ date: "2026-06-01", taux: 4.125 }, { date: "2026-09-17", taux: 3.875 }], "2026-10-16");
+  if (!(baisse.note! > 0.5)) throw new Error(`baisse : ${baisse.note}`);
+  egal("sans données", facteurFed("SPX", [], [], [], "2026-10-16").statut, "indisponible");
 });
 
-Deno.test("taux : une hausse rapide est baissière, une baisse haussière", () => {
+Deno.test("taux : une hausse rapide du nominal et du réel est baissière, une baisse haussière", () => {
   const serie = (fin: number): PointTaux[] =>
     Array.from({ length: 30 }, (_, i) => ({
       date: new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10),
       taux: i < 25 ? 4 : 4 + ((fin - 4) * (i - 24)) / 5,
     }));
-  const hausse = facteurTaux("SPX", serie(4.2), "2026-10-01", "av");
-  const baisse = facteurTaux("SPX", serie(3.8), "2026-10-01", "av");
-  if (!(hausse.note! < -0.5)) throw new Error(`hausse : ${hausse.note}`);
-  if (!(baisse.note! > 0.5)) throw new Error(`baisse : ${baisse.note}`);
+  const hausse = facteurTaux("SPX", serie(4.2), serie(4.2), "2026-10-01", "fred");
+  const baisse = facteurTaux("SPX", serie(3.8), serie(3.8), "2026-10-01", "fred");
+  egal("hausse", hausse.note, -1);
+  egal("baisse", baisse.note, 1);
+  // Sans taux réel : seul le nominal compte.
+  egal("nominal seul", facteurTaux("SPX", serie(4.2), [], "2026-10-01", "fred").note, -1);
+  if (!hausse.texte.includes("taux réel à 10 ans")) throw new Error(hausse.texte);
 });
 
 Deno.test("macro : sens par indicateur et fenêtre de fraîcheur", () => {
@@ -57,11 +67,10 @@ Deno.test("macro : sens par indicateur et fenêtre de fraîcheur", () => {
 });
 
 Deno.test("risque : volatilité au-dessus de sa médiane et spread qui s'écarte = baissier", () => {
-  const jours = (n: number) => new Date(Date.parse("2026-10-16") - n * 86_400_000).toISOString().slice(0, 10);
   // 300 jours de VIX à 15, puis 6 séances qui montent jusqu'à 28.
-  const vix: PointTaux[] = Array.from({ length: 300 }, (_, i) => ({ date: jours(306 - i), taux: 15 }));
-  [17, 19, 21, 24, 26, 28].forEach((v, i) => vix.push({ date: jours(6 - i), taux: v }));
-  const hy: PointTaux[] = Array.from({ length: 10 }, (_, i) => ({ date: jours(10 - i), taux: 3 + i * 0.1 }));
+  const vix: PointTaux[] = Array.from({ length: 300 }, (_, i) => ({ date: jourAvant(306 - i), taux: 15 }));
+  [17, 19, 21, 24, 26, 28].forEach((v, i) => vix.push({ date: jourAvant(6 - i), taux: v }));
+  const hy: PointTaux[] = Array.from({ length: 10 }, (_, i) => ({ date: jourAvant(10 - i), taux: 3 + i * 0.1 }));
   const f = facteurRisque("SPX", vix, hy, "2026-10-16");
   // Vol : -(0,5 x borner(13/8) + 0,5 x borner(11/5)) = -1 ; crédit : +0,5 pt -> -1.
   egal("note", f.note, -1);
@@ -70,15 +79,27 @@ Deno.test("risque : volatilité au-dessus de sa médiane et spread qui s'écarte
   egal("données trop anciennes", facteurRisque("SPX", vix, hy, "2026-11-30").statut, "indisponible");
 });
 
-Deno.test("synthèse : facteur indisponible retiré, tendance obligatoire, raisons", () => {
-  const tendance = facteurTendance("SPX", { date: "2026-10-15", cloture: 102, mm20: 100, mm50: 98, source: "fred" }, "2026-10-16");
+Deno.test("conditions financières : plus souples que la moyenne et qui s'assouplissent = haussier", () => {
+  // NFCI hebdomadaire : -0,40 il y a 4 semaines, -0,50 la dernière (valeur réelle du 09/10/2026 : -0,499).
+  const nfci = [-0.4, -0.42, -0.45, -0.47, -0.5].map((v, i) => ({ date: jourAvant((4 - i) * 7 + 7), taux: v }));
+  const f = facteurConditions("SPX", nfci, "2026-10-16");
+  // Niveau : -borner(-0,5 / 0,5) = +1 ; variation -0,10 / 0,15 -> +0,667 ; 0,6 x 1 + 0,4 x 0,667 = 0,867.
+  egal("note", f.note, 0.867);
+  if (!f.texte.includes("NFCI −0,50") || !f.texte.includes("plus souples que la moyenne") || !f.texte.includes("assouplissement")) throw new Error(f.texte);
+  egal("trop ancien", facteurConditions("SPX", nfci, "2026-11-30").statut, "indisponible");
+});
+
+Deno.test("synthèse : facteur indisponible retiré, pas de biais sous la moitié des poids, raisons", () => {
+  const fed = facteurFed("SPX", [point(1, 4.77)], [point(1, 3.88)], [], "2026-10-16");
+  const conditions = facteurConditions("SPX", [{ date: jourAvant(7), taux: -0.5 }], "2026-10-16");
   const macro = facteurMacro("SPX", [], "2026-10-16", "av");
-  const r = combiner([tendance, macro]);
-  if (!r.ok) throw new Error(r.raison);
-  // Seule la tendance (0,35) est disponible sur 0,55 : 64 % >= 50 %, score = 1.
-  egal("score", r.score, 1);
-  egal("biais", r.biais, "haussier");
-  egal("raisons", r.raisons.length, 1);
-  const sansCours = combiner([facteurTendance("SPX", null, "2026-10-16"), macro]);
-  egal("sans cours", sansCours.ok, false);
+  const partiel = combiner([fed, conditions, macro]);
+  // Fed (0,25) + conditions (0,15) sur 0,6 : 67 % disponibles.
+  if (!partiel.ok) throw new Error(partiel.raison);
+  // (0,25 x -1 + 0,15 x 1) / 0,4 = -0,25 -> baissier.
+  egal("score", partiel.score, -0.25);
+  egal("biais", partiel.biais, "baissier");
+  egal("raisons", partiel.raisons.length, 2);
+  const trop = combiner([conditions, macro, facteurFed("SPX", [], [], [], "2026-10-16")]);
+  egal("moins de la moitié des poids", trop.ok, false);
 });

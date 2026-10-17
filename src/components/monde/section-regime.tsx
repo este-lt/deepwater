@@ -6,13 +6,11 @@ import { useLangue } from "@/components/langue";
 import type { Composante, Couverture, Regime } from "@/lib/analyse";
 import { formaterDateSeance, formaterNombre, formaterPb, formaterPct } from "@/lib/format";
 
-const COMPOSANTES: Record<Composante["cle"], { fr: string; en: string; aideFr: string; aideEn: string }> = {
-  actions: { fr: "S&P 500", en: "S&P 500", aideFr: "hausse = appétit pour le risque", aideEn: "up = risk appetite" },
-  volatilite: { fr: "VIX", en: "VIX", aideFr: "baisse = risk-on", aideEn: "down = risk-on" },
-  credit: { fr: "Spread haut rendement", en: "High-yield spread", aideFr: "resserrement = risk-on", aideEn: "tightening = risk-on" },
-  audjpy: { fr: "AUD/JPY", en: "AUD/JPY", aideFr: "devise de risque contre refuge", aideEn: "risk currency vs haven" },
-  franc: { fr: "USD/CHF", en: "USD/CHF", aideFr: "franc faible = risk-on", aideEn: "weak franc = risk-on" },
-  or: { fr: "Or", en: "Gold", aideFr: "hausse = recherche de refuge", aideEn: "up = haven demand" },
+// Mesures concrètes du sentiment, aucune variation de cours ni indicateur technique.
+const COMPOSANTES: Record<Composante["cle"], { fr: string; en: string; aideFr: string; aideEn: string; poids: string }> = {
+  volatilite: { fr: "Peur mesurée par les options (VIX)", en: "Fear priced by options (VIX)", aideFr: "au-dessus de sa médiane ou en hausse = risk-off", aideEn: "above its median or rising = risk-off", poids: "40" },
+  credit: { fr: "Prime de risque de crédit (spread haut rendement)", en: "Credit risk premium (high-yield spread)", aideFr: "qui s'écarte = risk-off", aideEn: "widening = risk-off", poids: "35" },
+  conditions: { fr: "Conditions financières (NFCI, Fed de Chicago)", en: "Financial conditions (NFCI, Chicago Fed)", aideFr: "au-dessus de 0 ou qui se resserrent = risk-off", aideEn: "above 0 or tightening = risk-off", poids: "25" },
 };
 
 const COUVERTURES: Record<Couverture["cle"], { fr: string; en: string }> = {
@@ -61,21 +59,37 @@ export function SectionRegime({ regime, couvertures, correlations20, correlation
     neutre: { texte: t("Neutre", "Neutral"), ton: "neutre" as const, aide: t("Signaux partagés", "Mixed signals") },
     indisponible: { texte: t("Indisponible", "Unavailable"), ton: "neutre" as const, aide: t("Données insuffisantes", "Not enough data") },
   }[regime.etat];
-  const valeur = (c: Composante) =>
-    c.valeur === null ? "—" : c.unite === "pct" ? formaterPct(c.valeur, 1, true, langue) : c.unite === "pb" ? formaterPb(c.valeur, langue) : `${c.valeur > 0 ? "+" : c.valeur < 0 ? "−" : ""}${formaterNombre(Math.abs(c.valeur), 1, langue)} pt`;
+  const signe = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "");
+  // Niveau, puis variation récente et repère, dans l'unité de chaque mesure.
+  const valeur = (c: Composante): { niveau: string; detail: string } => {
+    if (c.niveau === null) return { niveau: "—", detail: "" };
+    if (c.cle === "volatilite") {
+      return {
+        niveau: formaterNombre(c.niveau, 1, langue),
+        detail: [
+          c.variation === null ? null : `${signe(c.variation)}${formaterNombre(Math.abs(c.variation), 1, langue)} pt / 5 ${t("séances", "sessions")}`,
+          c.reference === null ? null : `${t("médiane 4 mois", "4-month median")} ${formaterNombre(c.reference, 1, langue)}`,
+        ].filter(Boolean).join(" · "),
+      };
+    }
+    if (c.cle === "credit") {
+      return { niveau: formaterPct(c.niveau, 2, false, langue), detail: c.variation === null ? "" : `${formaterPb(c.variation, langue)} / 5 ${t("séances", "sessions")}` };
+    }
+    return { niveau: formaterNombre(c.niveau, 2, langue), detail: c.variation === null ? "" : `${signe(c.variation)}${formaterNombre(Math.abs(c.variation), 2, langue)} / 4 ${t("semaines", "weeks")}` };
+  };
   // Une corrélation proche de zéro ne couvre rien : seuil de -0,2.
   const meilleure = couvertures[0] && couvertures[0].correlation <= -0.2 ? couvertures[0] : null;
 
   return (
     <Carte
       titre={t("Régime de marché", "Market regime")}
-      sousTitre={`${t("Variations sur 5 séances", "Changes over 5 sessions")}${regime.date ? ` · ${t("au", "as of")} ${formaterDateSeance(regime.date, langue)}` : ""}`}
+      sousTitre={`${t("Sentiment sur mesures concrètes : volatilité implicite, crédit, conditions financières", "Sentiment from concrete measures: implied volatility, credit, financial conditions")}${regime.date ? ` · ${t("au", "as of")} ${formaterDateSeance(regime.date, langue)}` : ""}`}
       actions={<Pastille ton={etat.ton}>{etat.texte}{regime.score !== null && ` ${regime.score > 0 ? "+" : regime.score < 0 ? "−" : ""}${Math.round(Math.abs(regime.score) * 100)}`}</Pastille>}
       pied={
         <p className="text-xs text-discret">
           {t(
-            "Scoring par règles sur les clôtures officielles (FRED, BCE, Alpha Vantage) ; ni prédiction ni conseil. Corrélations des variations quotidiennes ; JPY* = USD/JPY (une corrélation positive avec le S&P signifie que le yen baisse quand les actions montent).",
-            "Rules-based score on official closes (FRED, ECB, Alpha Vantage); neither forecast nor advice. Correlations of daily changes; JPY* = USD/JPY (a positive correlation with the S&P means the yen falls when stocks rise).",
+            "Régime : scoring par règles sur des données officielles (FRED : VIX, spread ICE BofA, NFCI), sans analyse technique ; ni prédiction ni conseil. Corrélations des variations quotidiennes, à titre d'information (couverture) ; JPY* = USD/JPY (une corrélation positive avec le S&P signifie que le yen baisse quand les actions montent).",
+            "Regime: rules-based score on official data (FRED: VIX, ICE BofA spread, NFCI), no technical analysis; neither forecast nor advice. Correlations of daily changes, for information (hedging); JPY* = USD/JPY (a positive correlation with the S&P means the yen falls when stocks rise).",
           )}
         </p>
       }
@@ -83,15 +97,23 @@ export function SectionRegime({ regime, couvertures, correlations20, correlation
       <div className="flex flex-col gap-5">
         <p className="text-sm text-attenue">{etat.aide}.</p>
         <ul className="flex flex-col gap-2.5">
-          {regime.composantes.map((c) => (
-            <li key={c.cle} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
-              <span className="truncate text-sm">
-                {t(COMPOSANTES[c.cle].fr, COMPOSANTES[c.cle].en)} <span className="text-xs text-discret">· {t(COMPOSANTES[c.cle].aideFr, COMPOSANTES[c.cle].aideEn)}</span>
-              </span>
-              <span className="chiffres text-right text-sm font-medium">{valeur(c)}</span>
-              <div className="col-span-2"><Barre note={c.note} /></div>
-            </li>
-          ))}
+          {regime.composantes.map((c) => {
+            const v = valeur(c);
+            return (
+              <li key={c.cle} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
+                <span className="min-w-0 text-sm">
+                  {t(COMPOSANTES[c.cle].fr, COMPOSANTES[c.cle].en)}{" "}
+                  <span className="text-xs text-discret">· {COMPOSANTES[c.cle].poids}{langue === "en" ? "%" : " %"}</span>
+                  <span className="block text-xs text-discret">{t(COMPOSANTES[c.cle].aideFr, COMPOSANTES[c.cle].aideEn)}</span>
+                </span>
+                <span className="chiffres text-right">
+                  <span className="block text-sm font-medium">{v.niveau}</span>
+                  {v.detail && <span className="block text-[0.7rem] text-attenue">{v.detail}</span>}
+                </span>
+                <div className="col-span-2"><Barre note={c.note} /></div>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="rounded-xl bg-surface-2 p-3">

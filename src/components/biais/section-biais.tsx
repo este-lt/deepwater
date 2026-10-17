@@ -33,8 +33,8 @@ export function SectionBiais({ etat, langue }: { etat: EtatBiais; langue: Langue
           </p>
           <p className="text-xs text-attenue">
             {t(
-              "Calculé une fois pour tous à partir des données en base : tendance, taux longs, surprise macro, volatilité et crédit. Votre validation n'est visible que par vous.",
-              "Calculated once for everyone from stored data: trend, long rates, macro surprise, volatility and credit. Your validation is visible only to you.",
+              "Calculé une fois pour tous à partir des données en base, sans aucune analyse technique : politique de la Fed (taux à 2 ans contre Fed funds, dernière décision), taux longs nominal et réel, surprise macro, volatilité implicite et crédit, conditions financières. Votre validation n'est visible que par vous.",
+              "Calculated once for everyone from stored data, with no technical analysis: Fed policy (2-year yield vs Fed funds, last decision), nominal and real long rates, macro surprise, implied volatility and credit, financial conditions. Your validation is visible only to you.",
             )}
             {etat.autoActif
               ? ` ${t("Calcul automatique activé : chaque jour ouvré à 8 h 30, heure de New York.", "Automatic calculation on: every business day at 8:30 a.m. New York time.")}`

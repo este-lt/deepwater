@@ -1,4 +1,5 @@
-// Calcul des facteurs du biais à partir de données déjà en base (aucun appel externe).
+// Calcul des facteurs du biais à partir de données déjà en base (aucun appel externe) :
+// uniquement des données concrètes, aucune analyse technique (voir regles.ts).
 // Fonctions pures : testées dans facteurs.test.ts. Chaque explication est écrite en
 // français (texte) et en anglais (texte_en) : le site affiche celle de l'utilisateur.
 import { type CleFacteur, type CleIndice, REGLES_BIAIS } from "./regles.ts";
@@ -15,14 +16,6 @@ export interface Facteur {
   texte_en: string;
   source: string;
   date: string | null;
-}
-
-export interface PointPrix {
-  date: string;
-  cloture: number;
-  mm20: number | null;
-  mm50: number | null;
-  source: string;
 }
 
 export interface PointTaux {
@@ -56,10 +49,11 @@ const moisAnnee = (date: string, l: L = "fr") =>
   new Intl.DateTimeFormat(locale(l), { month: "short", year: "numeric", timeZone: "UTC" }).format(jourUtc(date));
 
 const NOMS: Record<CleFacteur, [string, string]> = {
-  tendance: ["Tendance (moyennes mobiles)", "Trend (moving averages)"],
+  fed: ["Politique de la Fed", "Fed policy"],
   taux: ["Taux longs", "Long rates"],
   macro: ["Surprise macro", "Macro surprise"],
   risque: ["Appétit pour le risque", "Risk appetite"],
+  conditions: ["Conditions financières", "Financial conditions"],
 };
 
 const indisponible = (cle: CleFacteur, poids: number, texte: (l: L) => string, source: string): Facteur => ({
@@ -90,61 +84,104 @@ export function seanceVisee(maintenant: Date): string {
 
 // --- Facteurs -----------------------------------------------------------------
 
-export function facteurTendance(indice: CleIndice, prix: PointPrix | null, aujourdhui: string): Facteur {
-  const r = REGLES_BIAIS.tendance;
-  const { libelle, poids } = { libelle: REGLES_BIAIS.indices[indice].libelle, poids: REGLES_BIAIS.indices[indice].poids.tendance };
-  if (!prix || prix.mm20 === null || prix.mm50 === null) {
-    return indisponible("tendance", poids, (l) => l === "fr" ? `${libelle} : cours ou moyennes mobiles absents.` : `${libelle}: price or moving averages missing.`, prix?.source ?? "FRED");
+const tri = (s: PointTaux[]) => [...s].sort((a, b) => a.date.localeCompare(b.date));
+const pb = (v: number, l: L) => `${signe(v)}${nf(Math.abs(v * 100), 0, l)} ${l === "fr" ? "pb" : "bp"}`;
+
+// Politique de la Fed : anticipation du marché (taux à 2 ans contre taux effectif des Fed
+// funds) et sens de la dernière décision (changements du taux directeur, BRI).
+export function facteurFed(indice: CleIndice, deuxAns: PointTaux[], fedFunds: PointTaux[], decisions: PointTaux[], aujourdhui: string): Facteur {
+  const r = REGLES_BIAIS.fed;
+  const poids = REGLES_BIAIS.indices[indice].poids.fed;
+  const source = "FRED (DGS2, DFF), BRI";
+  const deux = tri(deuxAns).at(-1);
+  const ff = tri(fedFunds).at(-1);
+  const anticipation = deux && ff && joursEntre(deux.date, aujourdhui) <= r.ageMaxJours && joursEntre(ff.date, aujourdhui) <= r.ageMaxJours
+    ? { ecart: deux.taux - ff.taux, deux, ff }
+    : null;
+
+  const d = tri(decisions);
+  const n = d.length;
+  let decision: { ecart: number; date: string; note: number } | null = null;
+  if (n >= 2 && joursEntre(d[n - 1].date, aujourdhui) <= r.joursDecisionRecente) {
+    const ecart = d[n - 1].taux - d[n - 2].taux;
+    const memeSens = n >= 3 && Math.sign(d[n - 2].taux - d[n - 3].taux) === Math.sign(ecart) && joursEntre(d[n - 2].date, d[n - 1].date) <= r.joursMemeSens;
+    // Une hausse de taux est baissière pour les actions, une baisse haussière.
+    decision = { ecart, date: d[n - 1].date, note: -Math.sign(ecart) * (memeSens ? 1 : 0.6) };
   }
-  if (joursEntre(prix.date, aujourdhui) > r.ageMaxJours) {
-    return indisponible(
-      "tendance", poids,
-      (l) => l === "fr" ? `${libelle} : dernière clôture du ${dateCourte(prix.date)}, trop ancienne.` : `${libelle}: last close on ${dateCourte(prix.date, "en")}, too old.`,
-      prix.source,
-    );
+
+  if (!anticipation && !decision) {
+    return indisponible("fed", poids, (l) => l === "fr" ? "Taux à 2 ans, Fed funds et décisions récentes indisponibles." : "2-year yield, Fed funds and recent decisions unavailable.", source);
   }
-  const { mm20, mm50 } = prix;
-  const e20 = (prix.cloture / mm20 - 1) * 100;
-  const e50 = (prix.cloture / mm50 - 1) * 100;
-  const note = r.partMm20 * borner(e20 / r.ecartPleinMm20Pct) + (1 - r.partMm20) * borner(e50 / r.ecartPleinMm50Pct);
-  const position = (e: number, l: L) => l === "fr" ? `${pc(Math.abs(e), 1, l)} ${e >= 0 ? "au-dessus" : "en dessous"}` : `${pc(Math.abs(e), 1, l)} ${e >= 0 ? "above" : "below"}`;
-  return disponible(
-    "tendance", poids, note,
-    (l) => l === "fr"
-      ? `${libelle} : clôture à ${nf(prix.cloture, 2)} le ${dateCourte(prix.date)}, ${position(e20, l)} de la MM20 (${nf(mm20, 0)}) et ${position(e50, l)} de la MM50 (${nf(mm50, 0)}).`
-      : `${libelle}: close at ${nf(prix.cloture, 2, l)} on ${dateCourte(prix.date, l)}, ${position(e20, l)} the 20-day MA (${nf(mm20, 0, l)}) and ${position(e50, l)} the 50-day MA (${nf(mm50, 0, l)}).`,
-    prix.source, prix.date,
-  );
+  const noteAnticipation = anticipation ? -borner(anticipation.ecart / r.ecartPleinPts) : null;
+  const note = noteAnticipation !== null && decision
+    ? r.partAnticipation * noteAnticipation + (1 - r.partAnticipation) * decision.note
+    : noteAnticipation ?? decision!.note;
+
+  const texte = (l: L) => {
+    const parties: string[] = [];
+    if (anticipation) {
+      const { ecart, deux, ff } = anticipation;
+      const sens = Math.abs(ecart) < 0.1
+        ? l === "fr" ? "pas de changement anticipé" : "no change priced in"
+        : ecart > 0
+        ? l === "fr" ? "le marché anticipe des hausses de taux" : "the market prices in rate hikes"
+        : l === "fr" ? "le marché anticipe des baisses de taux" : "the market prices in rate cuts";
+      parties.push(l === "fr"
+        ? `taux à 2 ans ${pc(deux.taux, 2, l)} contre Fed funds ${pc(ff.taux, 2, l)} (${pb(ecart, l)}) : ${sens}`
+        : `2-year yield ${pc(deux.taux, 2, l)} vs Fed funds ${pc(ff.taux, 2, l)} (${pb(ecart, l)}): ${sens}`);
+    } else {
+      parties.push(l === "fr" ? "anticipations de marché indisponibles" : "market expectations unavailable");
+    }
+    if (decision) {
+      parties.push(l === "fr"
+        ? `dernière décision : ${decision.ecart > 0 ? "hausse" : "baisse"} de ${nf(Math.abs(decision.ecart * 100), 0)} pb le ${dateCourte(decision.date)}`
+        : `last decision: ${decision.ecart > 0 ? "hike" : "cut"} of ${nf(Math.abs(decision.ecart * 100), 0, l)} bp on ${dateCourte(decision.date, l)}`);
+    } else {
+      parties.push(l === "fr" ? "pas de changement de taux depuis plus de 200 jours" : "no rate change in over 200 days");
+    }
+    const t = parties.join(l === "fr" ? " ; " : "; ");
+    return `${t.charAt(0).toUpperCase()}${t.slice(1)}${t.endsWith(".") ? "" : "."}`;
+  };
+  return disponible("fed", poids, note, texte, source, anticipation?.deux.date ?? decision?.date ?? null);
 }
 
-export function facteurTaux(indice: CleIndice, serie: PointTaux[], aujourdhui: string, source: string): Facteur {
+// Taux longs : variation sur 5 séances du taux nominal à 10 ans et du taux réel à 10 ans
+// (obligations indexées sur l'inflation). Une hausse du coût de l'argent est baissière.
+export function facteurTaux(indice: CleIndice, nominal: PointTaux[], reel: PointTaux[], aujourdhui: string, source: string): Facteur {
   const r = REGLES_BIAIS.taux;
   const poids = REGLES_BIAIS.indices[indice].poids.taux;
-  const tries = [...serie].sort((a, b) => a.date.localeCompare(b.date));
-  const dernier = tries.at(-1);
-  const reference = tries.at(-1 - r.seancesVariation);
-  if (!dernier || !reference) {
-    return indisponible("taux", poids, (l) => l === "fr" ? `${r.libelle} : historique insuffisant.` : `${r.libelle_en}: not enough history.`, source);
+  const lire = (s: PointTaux[]) => {
+    const t = tri(s);
+    const dernier = t.at(-1);
+    const reference = t.at(-1 - r.seancesVariation);
+    if (!dernier || !reference || joursEntre(dernier.date, aujourdhui) > r.ageMaxJours) return null;
+    return { dernier, variation: dernier.taux - reference.taux };
+  };
+  const nom = lire(nominal);
+  const re = lire(reel);
+  if (!nom && !re) {
+    return indisponible("taux", poids, (l) => l === "fr" ? `${r.libelle} : données absentes ou trop anciennes.` : `${r.libelle_en}: data missing or too old.`, source);
   }
-  if (joursEntre(dernier.date, aujourdhui) > r.ageMaxJours) {
-    return indisponible(
-      "taux", poids,
-      (l) => l === "fr" ? `${r.libelle} : dernière valeur du ${dateCourte(dernier.date)}, trop ancienne.` : `${r.libelle_en}: last value on ${dateCourte(dernier.date, "en")}, too old.`,
-      source,
-    );
-  }
-  const annee = tries.filter((p) => joursEntre(p.date, dernier.date) <= r.joursMoyenne);
-  const moyenne = annee.reduce((s, p) => s + p.taux, 0) / annee.length;
-  const variation = dernier.taux - reference.taux;
-  const ecart = dernier.taux - moyenne;
-  const note = r.partVariation * -borner(variation / r.variationPleinePts) + (1 - r.partVariation) * -borner(ecart / r.ecartPleinMoyennePts);
-  return disponible(
-    "taux", poids, note,
-    (l) => l === "fr"
-      ? `${r.libelle} : ${pc(dernier.taux, 2, l)} le ${dateCourte(dernier.date)}, ${signe(variation)}${nf(Math.abs(variation), 2)} pt en ${r.seancesVariation} séances, ${nf(Math.abs(ecart), 2)} pt ${ecart >= 0 ? "au-dessus" : "en dessous"} de sa moyenne sur un an (${pc(moyenne, 2, l)}).`
-      : `${r.libelle_en}: ${pc(dernier.taux, 2, l)} on ${dateCourte(dernier.date, l)}, ${signe(variation)}${nf(Math.abs(variation), 2, l)} pt over ${r.seancesVariation} sessions, ${nf(Math.abs(ecart), 2, l)} pt ${ecart >= 0 ? "above" : "below"} its one-year average (${pc(moyenne, 2, l)}).`,
-    source, dernier.date,
-  );
+  const notes = [
+    ...(nom ? [{ note: -borner(nom.variation / r.variationPleinePts), part: r.partNominal }] : []),
+    ...(re ? [{ note: -borner(re.variation / r.variationPleinePts), part: 1 - r.partNominal }] : []),
+  ];
+  const note = notes.reduce((s, x) => s + x.note * x.part, 0) / notes.reduce((s, x) => s + x.part, 0);
+  const texte = (l: L) => {
+    const parties: string[] = [];
+    if (nom) {
+      parties.push(l === "fr"
+        ? `${r.libelle} : ${pc(nom.dernier.taux, 2, l)} le ${dateCourte(nom.dernier.date)}, ${signe(nom.variation)}${nf(Math.abs(nom.variation), 2)} pt en ${r.seancesVariation} séances`
+        : `${r.libelle_en}: ${pc(nom.dernier.taux, 2, l)} on ${dateCourte(nom.dernier.date, l)}, ${signe(nom.variation)}${nf(Math.abs(nom.variation), 2, l)} pt over ${r.seancesVariation} sessions`);
+    }
+    if (re) {
+      parties.push(l === "fr"
+        ? `taux réel à 10 ans ${pc(re.dernier.taux, 2, l)} (${signe(re.variation)}${nf(Math.abs(re.variation), 2)} pt)`
+        : `10-year real yield ${pc(re.dernier.taux, 2, l)} (${signe(re.variation)}${nf(Math.abs(re.variation), 2, l)} pt)`);
+    }
+    return `${parties.join(l === "fr" ? " ; " : "; ")}.`;
+  };
+  return disponible("taux", poids, note, texte, source, nom?.dernier.date ?? re?.dernier.date ?? null);
 }
 
 export function facteurMacro(indice: CleIndice, publications: PublicationMacro[], aujourdhui: string, source: string): Facteur {
@@ -247,6 +284,37 @@ export function facteurRisque(indice: CleIndice, volatilite: PointTaux[], credit
   );
 }
 
+// Conditions financières (indice NFCI de la Fed de Chicago) : au-dessus de zéro, plus
+// tendues que la moyenne historique ; un resserrement récent est baissier.
+export function facteurConditions(indice: CleIndice, nfci: PointTaux[], aujourdhui: string): Facteur {
+  const r = REGLES_BIAIS.conditions;
+  const poids = REGLES_BIAIS.indices[indice].poids.conditions;
+  const source = "FRED (NFCI, Fed de Chicago)";
+  const t = tri(nfci);
+  const dernier = t.at(-1);
+  if (!dernier || joursEntre(dernier.date, aujourdhui) > r.ageMaxJours) {
+    return indisponible("conditions", poids, (l) => l === "fr" ? "Indice des conditions financières absent ou trop ancien." : "Financial conditions index missing or too old.", source);
+  }
+  const reference = t.at(-1 - r.semainesVariation);
+  const variation = reference ? dernier.taux - reference.taux : null;
+  const noteNiveau = -borner(dernier.taux / r.niveauPlein);
+  const note = variation === null ? noteNiveau : r.partNiveau * noteNiveau + (1 - r.partNiveau) * -borner(variation / r.variationPleine);
+  const texte = (l: L) => {
+    const etat = dernier.taux > 0
+      ? l === "fr" ? "plus tendues que la moyenne" : "tighter than average"
+      : l === "fr" ? "plus souples que la moyenne" : "looser than average";
+    const evolution = variation === null
+      ? ""
+      : l === "fr"
+      ? `, ${variation > 0.02 ? "resserrement" : variation < -0.02 ? "assouplissement" : "stables"} sur ${r.semainesVariation} semaines (${signe(variation)}${nf(Math.abs(variation), 2)})`
+      : `, ${variation > 0.02 ? "tightening" : variation < -0.02 ? "easing" : "stable"} over ${r.semainesVariation} weeks (${signe(variation)}${nf(Math.abs(variation), 2, l)})`;
+    return l === "fr"
+      ? `Conditions financières (NFCI ${signe(dernier.taux)}${nf(Math.abs(dernier.taux), 2)} au ${dateCourte(dernier.date)}) ${etat}${evolution}.`
+      : `Financial conditions (NFCI ${signe(dernier.taux)}${nf(Math.abs(dernier.taux), 2, l)} as of ${dateCourte(dernier.date, l)}) ${etat}${evolution}.`;
+  };
+  return disponible("conditions", poids, note, texte, source, dernier.date);
+}
+
 // --- Synthèse -----------------------------------------------------------------
 
 export type ResultatBiais =
@@ -264,9 +332,6 @@ export function combiner(facteurs: Facteur[]): ResultatBiais {
   const poidsTotal = facteurs.reduce((s, f) => s + f.poids, 0);
   const disponibles = facteurs.filter((f) => f.statut === "ok");
   const poidsDisponible = disponibles.reduce((s, f) => s + f.poids, 0);
-  if (!disponibles.some((f) => f.cle === "tendance")) {
-    return { ok: false, raison: "cours de l'indice indisponible ou trop ancien", facteurs };
-  }
   if (poidsDisponible / poidsTotal < REGLES_BIAIS.partPoidsMinimale) {
     return { ok: false, raison: `seulement ${Math.round((poidsDisponible / poidsTotal) * 100)} % des facteurs disponibles`, facteurs };
   }

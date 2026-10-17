@@ -13,6 +13,11 @@ const SOURCES: Record<string, [string, string]> = {
   "fred:SP500": ["FRED (S&P 500)", "FRED (S&P 500)"],
   "fred:NASDAQ100": ["FRED (Nasdaq-100)", "FRED (Nasdaq-100)"],
   "fred:DGS10": ["FRED (Trésor US 10 ans)", "FRED (10Y Treasury)"],
+  "FRED (DGS2, DFF), BRI": ["FRED (taux à 2 ans, Fed funds), BRI", "FRED (2-year yield, Fed funds), BIS"],
+  "FRED (DGS10, DFII10)": ["FRED (taux nominal et réel à 10 ans)", "FRED (10-year nominal and real yields)"],
+  "FRED (NFCI, Fed de Chicago)": ["FRED (NFCI, Fed de Chicago)", "FRED (NFCI, Chicago Fed)"],
+  "FRED (VIX, spread haut rendement ICE BofA)": ["FRED (VIX, spread haut rendement ICE BofA)", "FRED (VIX, ICE BofA high-yield spread)"],
+  "FRED (VXN, spread haut rendement ICE BofA)": ["FRED (VXN, spread haut rendement ICE BofA)", "FRED (VXN, ICE BofA high-yield spread)"],
 };
 const libelleSource = (s: string, en: boolean) => SOURCES[s]?.[en ? 1 : 0] ?? s;
 // Texte d'un facteur dans la langue de l'utilisateur (anglais quand le calcul l'a produit).

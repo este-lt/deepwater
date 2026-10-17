@@ -31,12 +31,9 @@ function Section({ titre, children }: { titre: string; children: ReactNode }) {
 }
 
 const NOMS_COMPOSANTES: Record<Composante["cle"], [string, string]> = {
-  actions: ["S&P 500", "S&P 500"],
   volatilite: ["VIX", "VIX"],
   credit: ["spread haut rendement", "high-yield spread"],
-  audjpy: ["AUD/JPY", "AUD/JPY"],
-  franc: ["USD/CHF", "USD/CHF"],
-  or: ["or", "gold"],
+  conditions: ["conditions financières (NFCI)", "financial conditions (NFCI)"],
 };
 
 export default async function PageRapport({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -63,16 +60,19 @@ export default async function PageRapport({ searchParams }: { searchParams: Prom
   // ---------------------------------------------------------------- Synthèse (phrases générées par règles)
   const phrases: string[] = [];
   if (regime.score !== null) {
-    const principales = [...regime.composantes]
-      .filter((c) => c.note !== null && c.valeur !== null)
-      .sort((a, b) => Math.abs(b.note! * b.poids) - Math.abs(a.note! * a.poids))
-      .slice(0, 3)
-      .map((c) => `${NOMS_COMPOSANTES[c.cle][en ? 1 : 0]} ${c.unite === "pct" ? pct(c.valeur) : c.unite === "pb" ? formaterPb(c.valeur, langue) : `${c.valeur! > 0 ? "+" : "−"}${formaterNombre(Math.abs(c.valeur!), 1, langue)} pt`}`);
+    // Niveaux concrets : VIX, spread de crédit (et sa variation), indice des conditions financières.
+    const decrire = (c: Composante) =>
+      c.cle === "volatilite"
+        ? `${NOMS_COMPOSANTES.volatilite[en ? 1 : 0]} ${formaterNombre(c.niveau, 1, langue)}`
+        : c.cle === "credit"
+        ? `${NOMS_COMPOSANTES.credit[en ? 1 : 0]} ${formaterPct(c.niveau, 2, false, langue)}${c.variation === null ? "" : ` (${formaterPb(c.variation, langue)})`}`
+        : `${NOMS_COMPOSANTES.conditions[en ? 1 : 0]} ${formaterNombre(c.niveau, 2, langue)}`;
+    const principales = regime.composantes.filter((c) => c.note !== null && c.niveau !== null).map(decrire);
     const nom = regime.etat === "risk-on" ? "risk-on" : regime.etat === "risk-off" ? "risk-off" : t("neutre", "neutral");
     phrases.push(
       t(
-        `Régime de marché ${nom} (score ${Math.round(regime.score * 100)}) sur 5 séances : ${principales.join(", ")}.`,
-        `Market regime ${nom} (score ${Math.round(regime.score * 100)}) over 5 sessions: ${principales.join(", ")}.`,
+        `Sentiment de marché ${nom} (score ${Math.round(regime.score * 100)}) : ${principales.join(", ")}.`,
+        `Market sentiment ${nom} (score ${Math.round(regime.score * 100)}): ${principales.join(", ")}.`,
       ),
     );
   }

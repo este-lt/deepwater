@@ -93,7 +93,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
         />
       ),
     },
-    { id: "devises", contenu: <SectionDevises forces={analyses.forces} paires={analyses.paires} dateFx={analyses.dateFx} langue={langue} /> },
+    { id: "devises", contenu: <SectionDevises forces={analyses.forces} paires={analyses.paires} langue={langue} /> },
     { id: "moniteur", contenu: <Moniteur lignes={marches} classes={preferences.classes} /> },
     {
       id: "graphique",

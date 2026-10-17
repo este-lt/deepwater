@@ -1,5 +1,7 @@
 // Biais quotidien du S&P 500 et du Nasdaq-100, calculé une seule fois pour tout le
-// monde à partir des données déjà en base (aucun appel d'API externe).
+// monde à partir des données déjà en base (aucun appel d'API externe), uniquement sur
+// des données concrètes : politique de la Fed, taux, statistiques, volatilité implicite,
+// crédit, conditions financières. Aucune analyse technique.
 // Appelé par pg_cron (mode "auto", si au moins un utilisateur l'a activé) ou par le
 // bouton de calcul manuel (mode "manuel", limité par utilisateur côté serveur).
 import { servirTacheProtegee } from "../_shared/garde.ts";
@@ -8,10 +10,11 @@ import { executerTache } from "../_shared/journal.ts";
 import { admin } from "../_shared/supabase.ts";
 import {
   combiner,
+  facteurConditions,
+  facteurFed,
   facteurMacro,
   facteurRisque,
   facteurTaux,
-  facteurTendance,
   type PointTaux,
   type PublicationMacro,
   seanceVisee,
@@ -26,26 +29,29 @@ servirTacheProtegee(async (corps) => {
     const db = admin();
     const seance = seanceVisee(new Date());
     const aujourdhui = new Date().toISOString().slice(0, 10);
-    const { macro: rMacro, taux: rTaux, risque: rRisque } = REGLES_BIAIS;
-    const symbolesRisque = [...new Set([rRisque.credit, ...Object.values(REGLES_BIAIS.indices).map((i) => i.volatilite)])];
+    const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions } = REGLES_BIAIS;
+    const volatilites = Object.values(REGLES_BIAIS.indices).map((i) => i.volatilite);
+    const symboles = [...new Set([rRisque.credit, ...volatilites, "US2Y", "FFR", "US10R", rConditions.serie])];
 
-    const [tickers, taux, publications] = await Promise.all([
-      db.from("tickers_suivis").select("id, symbole").in("symbole", [...Object.keys(REGLES_BIAIS.indices), ...symbolesRisque]),
-      db.from("taux_tresor").select("date, taux, source_donnee").eq("maturite", rTaux.maturite).gte("date", jourMoins(rTaux.joursMoyenne + 30)).order("date"),
+    const [tickers, taux, publications, decisions] = await Promise.all([
+      db.from("tickers_suivis").select("id, symbole").in("symbole", [...Object.keys(REGLES_BIAIS.indices), ...symboles]),
+      db.from("taux_tresor").select("date, taux, source_donnee").eq("maturite", rTaux.maturite).gte("date", jourMoins(60)).order("date"),
       db.from("calendrier_economique")
         .select("indicateur, date_reference, date_evenement, valeur, variation")
         .eq("type_evenement", "publication")
         .gte("date_evenement", jourMoins(rMacro.fenetreJours))
         .order("date_evenement", { ascending: false }),
+      db.from("taux_directeurs").select("date, taux").eq("devise", "USD").gte("date", jourMoins(3 * 366)).order("date"),
     ]);
-    for (const [nom, r] of [["instruments", tickers], ["taux", taux], ["calendrier", publications]] as const) {
+    for (const [nom, r] of [["instruments", tickers], ["taux", taux], ["calendrier", publications], ["décisions de la Fed", decisions]] as const) {
       if (r.error) throw new Error(`Lecture ${nom} impossible : ${r.error.message}`);
     }
     const idDe = new Map((tickers.data ?? []).map((t) => [t.symbole, t.id]));
 
-    // Séries de risque (volatilité implicite, spread de crédit) sur un an.
+    // Séries concrètes sur un an (médiane de la volatilité) : VIX, VXN, spread HY, taux à
+    // 2 ans, Fed funds effectif, taux réel à 10 ans, conditions financières.
     const series = new Map<string, PointTaux[]>();
-    for (const symbole of symbolesRisque) {
+    for (const symbole of symboles) {
       const id = idDe.get(symbole);
       if (!id) continue;
       const { data, error } = await db.from("prix_historique").select("date, cloture")
@@ -67,30 +73,21 @@ servirTacheProtegee(async (corps) => {
       });
     }
     const serieTaux = (taux.data ?? []).map((p) => ({ date: p.date, taux: Number(p.taux) }));
-    const sourceTaux = taux.data?.at(-1)?.source_donnee ?? "fred:DGS10";
+    const sourceTaux = "FRED (DGS10, DFII10)";
+    const decisionsFed = (decisions.data ?? []).map((d) => ({ date: d.date, taux: Number(d.taux) }));
+    const serie = (s: string) => series.get(s) ?? [];
 
     const bilan: Record<string, string> = {};
     for (const indice of Object.keys(REGLES_BIAIS.indices) as CleIndice[]) {
       const tickerId = idDe.get(indice);
       if (!tickerId) continue;
-      const { data: prix, error: erreurPrix } = await db
-        .from("prix_historique")
-        .select("date, cloture, mm20, mm50, source_donnee")
-        .eq("ticker_id", tickerId)
-        .order("date", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (erreurPrix) throw new Error(`Lecture des cours ${indice} impossible : ${erreurPrix.message}`);
 
       const r = combiner([
-        facteurTendance(
-          indice,
-          prix && { date: prix.date, cloture: Number(prix.cloture), mm20: prix.mm20 === null ? null : Number(prix.mm20), mm50: prix.mm50 === null ? null : Number(prix.mm50), source: prix.source_donnee },
-          aujourdhui,
-        ),
-        facteurTaux(indice, serieTaux, aujourdhui, sourceTaux),
+        facteurFed(indice, serie("US2Y"), serie("FFR"), decisionsFed, aujourdhui),
+        facteurTaux(indice, serieTaux, serie("US10R"), aujourdhui, sourceTaux),
         facteurMacro(indice, [...dernieres.values()], aujourdhui, "FRED (BLS, BEA)"),
-        facteurRisque(indice, series.get(REGLES_BIAIS.indices[indice].volatilite) ?? [], series.get(rRisque.credit) ?? [], aujourdhui),
+        facteurRisque(indice, serie(REGLES_BIAIS.indices[indice].volatilite), serie(rRisque.credit), aujourdhui),
+        facteurConditions(indice, serie(rConditions.serie), aujourdhui),
       ]);
       if (!r.ok) {
         bilan[indice] = `non publié : ${r.raison}`;
@@ -105,7 +102,6 @@ servirTacheProtegee(async (corps) => {
         .eq("date", seance)
         .eq("statut", "actif")
         .maybeSingle();
-      // Le texte anglais compte aussi : un biais calculé avant le site bilingue est recalculé.
       const empreinte = (f: { cle: string; statut: string; note: number | null; texte: string; texte_en?: string }[]) =>
         JSON.stringify(f.map((x) => [x.cle, x.statut, x.note, x.texte, x.texte_en ?? ""]));
       if (actif && empreinte(actif.facteurs ?? []) === empreinte(r.facteurs)) {

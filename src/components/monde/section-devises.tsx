@@ -1,14 +1,15 @@
 import { Carte, Pastille } from "@/components/carte";
 import type { CleFacteur, ForceDevise, Paire } from "@/lib/analyse";
-import { formaterDateSeance, formaterPct } from "@/lib/format";
+import { formaterDateSeance, formaterPb, formaterPct } from "@/lib/format";
 import { type Langue, traducteur } from "@/lib/i18n";
 
-export const FACTEURS: Record<CleFacteur, { fr: string; en: string; court: string }> = {
-  momentum: { fr: "Momentum (5 et 20 séances)", en: "Momentum (5 and 20 sessions)", court: "M" },
-  taux: { fr: "Taux directeur et taux réel", en: "Policy and real rate", court: "T" },
-  orientation: { fr: "Orientation de la banque centrale", en: "Central bank stance", court: "O" },
-  macro: { fr: "Croissance et emploi", en: "Growth and jobs", court: "C" },
-  regime: { fr: "Régime risk-on / risk-off", en: "Risk-on / risk-off regime", court: "R" },
+// Cinq facteurs fondamentaux (aucune analyse technique) : une étoile par facteur aligné.
+export const FACTEURS: Record<CleFacteur, { fr: string; en: string; court: string; courtEn: string }> = {
+  portage: { fr: "Portage (taux directeur face aux autres)", en: "Carry (policy rate vs the others)", court: "P", courtEn: "C" },
+  tauxReel: { fr: "Taux réel (taux directeur moins inflation)", en: "Real rate (policy rate minus inflation)", court: "R", courtEn: "R" },
+  orientation: { fr: "Orientation de la banque centrale", en: "Central bank stance", court: "O", courtEn: "S" },
+  macro: { fr: "Croissance et emploi", en: "Growth and jobs", court: "C", courtEn: "G" },
+  regime: { fr: "Sentiment risk-on / risk-off", en: "Risk-on / risk-off sentiment", court: "S", courtEn: "M" },
 };
 
 const ordre = Object.keys(FACTEURS) as CleFacteur[];
@@ -26,7 +27,7 @@ function Pastilles({ f, langue }: { f: ForceDevise; langue: Langue }) {
             title={`${t(FACTEURS[k].fr, FACTEURS[k].en)} : ${v === null ? t("indisponible", "unavailable") : Math.round(v * 100)}`}
             className={`grid size-5 place-items-center rounded text-[0.6rem] font-semibold ${ton}`}
           >
-            {langue === "en" && k === "macro" ? "G" : FACTEURS[k].court}
+            {langue === "en" ? FACTEURS[k].courtEn : FACTEURS[k].court}
           </span>
         );
       })}
@@ -34,18 +35,21 @@ function Pastilles({ f, langue }: { f: ForceDevise; langue: Langue }) {
   );
 }
 
-export function SectionDevises({ forces, paires, dateFx, langue }: { forces: ForceDevise[]; paires: Paire[]; dateFx: string | null; langue: Langue }) {
+export function SectionDevises({ forces, paires, langue }: { forces: ForceDevise[]; paires: Paire[]; langue: Langue }) {
   const t = traducteur(langue);
   const valides = forces.filter((f) => f.score !== null);
   return (
     <Carte
       titre={t("Force des devises", "Currency strength")}
-      sousTitre={`${t("Biais par devise : momentum, taux, orientation, croissance, régime", "Bias per currency: momentum, rates, stance, growth, regime")}${dateFx ? ` · ${t("cours BCE du", "ECB rates of")} ${formaterDateSeance(dateFx, langue)}` : ""}`}
+      sousTitre={t(
+        "Biais par devise sur données concrètes : taux, inflation, banques centrales, croissance, sentiment",
+        "Bias per currency from concrete data: rates, inflation, central banks, growth, sentiment",
+      )}
       pied={
         <p className="text-xs text-discret">
           {t(
-            "Scoring automatique par règles (pondérations : momentum 35 %, taux 20 %, orientation 20 %, croissance 10 %, régime 15 %), pas un conseil en investissement. Étoiles : nombre de facteurs qui donnent le même sens à la paire.",
-            "Automatic rules-based score (weights: momentum 35%, rates 20%, stance 20%, growth 10%, regime 15%), not investment advice. Stars: number of factors pointing the same way for the pair.",
+            "Scoring automatique par règles, aucune analyse technique (pondérations : portage 20 %, taux réel 20 %, orientation 25 %, croissance et emploi 15 %, sentiment 20 %), pas un conseil en investissement. Étoiles : nombre de facteurs qui donnent le même sens à la paire (5 étoiles : tous).",
+            "Automatic rules-based score, no technical analysis (weights: carry 20%, real rate 20%, stance 25%, growth and jobs 15%, sentiment 20%), not investment advice. Stars: number of factors pointing the same way for the pair (5 stars: all).",
           )}
         </p>
       }
@@ -72,8 +76,11 @@ export function SectionDevises({ forces, paires, dateFx, langue }: { forces: For
                   <span />
                   <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-discret">
                     <Pastilles f={f} langue={langue} />
-                    <span className="chiffres" title={t("Contre le panier des 7 autres devises", "Against the basket of the 7 others")}>
-                      {formaterPct(f.var5j, 1, true, langue)} / 5 {t("s.", "s.")} · {formaterPct(f.var20j, 1, true, langue)} / 20 {t("s.", "s.")}
+                    <span className="chiffres">
+                      {t("taux", "rate")} {f.tauxDirecteur === null ? "—" : formaterPct(f.tauxDirecteur, 2, false, langue)}
+                      {" · "}
+                      {t("réel", "real")} {f.tauxReel === null ? "—" : formaterPct(f.tauxReel, 1, true, langue)}
+                      {f.dernierMouvement && ` · ${formaterPb(f.dernierMouvement.ecartPb, langue)} ${t("le", "on")} ${formaterDateSeance(f.dernierMouvement.date, langue, false)}`}
                     </span>
                   </span>
                   <span />
