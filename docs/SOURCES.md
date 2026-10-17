@@ -240,8 +240,8 @@ seulement ; automatique à 8 h 30 (New York) si un utilisateur l'active, sinon m
 ### Contrôles
 
 - Isolation RLS : `npm run test:comptes` puis `npm run test:rls -- <id d'un biais>`
-  (43 contrôles avec deux comptes de test).
+  (51 contrôles avec deux comptes de test).
 - Webhook Clerk signé et idempotent : `npm run test:webhook`.
 - Fuites de secrets : `npm run build` lance `scripts/verifier-secrets.mjs`.
-- Edge Functions : `npx deno test --allow-read supabase/functions` (filtre, calendrier,
+- Edge Functions et analyses : `npx deno test --allow-read supabase/functions` (filtres, calendriers, macro mondiale, analyses,
   biais, Alpha Vantage).
