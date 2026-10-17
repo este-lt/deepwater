@@ -6,8 +6,6 @@ import {
   ColorType,
   createChart,
   CrosshairMode,
-  LineSeries,
-  LineStyle,
   type IChartApi,
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
@@ -24,8 +22,6 @@ interface Point {
   plus_haut: number | null;
   plus_bas: number | null;
   cloture: number;
-  mm20: number | null;
-  mm50: number | null;
 }
 interface Serie {
   ticker: { symbole: string; nom: string; note_source: string | null };
@@ -41,8 +37,6 @@ const PERIODES = [
   { cle: "3a", fr: "3A", en: "3Y" },
   { cle: "10a", fr: "10A", en: "10Y" },
 ] as const;
-
-const MM = { mm20: "#fbbf24", mm50: "#38bdf8" };
 
 // Couleurs du thème choisi (variables CSS posées sur <html>), lues au moment du rendu et
 // converties par le navigateur en « rgb(a)(…) », seule syntaxe comprise par le graphique.
@@ -152,16 +146,6 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
         priceLineVisible: false,
       }).setData(serie.points.map((p) => ({ time: p.date, value: p.cloture })));
     }
-    for (const [cle, couleur] of [["mm20", MM.mm20], ["mm50", MM.mm50]] as const) {
-      chart.addSeries(LineSeries, {
-        color: couleur,
-        lineWidth: 1,
-        lineStyle: cle === "mm50" ? LineStyle.Dashed : LineStyle.Solid,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      }).setData(serie.points.filter((p) => p[cle] !== null).map((p) => ({ time: p.date, value: p[cle] as number })));
-    }
     chart.timeScale().fitContent();
     return () => {
       chart.remove();
@@ -223,12 +207,6 @@ export function GraphiquePrix({ instruments, initial }: { instruments: { symbole
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-0.5 w-4 rounded bg-accent" /> {ohlc ? t("Chandeliers", "Candles") : t("Clôture", "Close")}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded bg-[#fbbf24]" /> {t("MM20", "MA20")}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded border-t border-dashed border-[#38bdf8]" /> {t("MM50", "MA50")}
           </span>
           <span>{t("Molette ou pincement : zoom · glisser : déplacer", "Wheel or pinch: zoom · drag: pan")}</span>
         </span>

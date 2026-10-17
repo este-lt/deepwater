@@ -19,8 +19,6 @@ export interface LigneMarche {
   cloture: number;
   source: string;
   majLe: string;
-  mm20: number | null;
-  mm50: number | null;
   var1j: number | null;
   var1s: number | null;
   var1m: number | null;
@@ -62,8 +60,6 @@ export async function lireMarches(supabase: ClientSupabase): Promise<LigneMarche
       cloture,
       source: l.source_donnee,
       majLe: l.maj_le,
-      mm20: num(l.mm20),
-      mm50: num(l.mm50),
       var1j: ecart(type, cloture, num(l.precedente)),
       var1s: ecart(type, cloture, num(l.il_y_a_1s)),
       var1m: ecart(type, cloture, num(l.il_y_a_1m)),
@@ -80,8 +76,6 @@ export interface PointSerie {
   plus_haut: number | null;
   plus_bas: number | null;
   cloture: number;
-  mm20: number | null;
-  mm50: number | null;
 }
 
 export async function lireSerie(
@@ -105,7 +99,7 @@ export async function lireSerie(
   for (let debut = 0; ; debut += 1000) {
     const { data, error: erreurPrix } = await supabase
       .from("prix_historique")
-      .select("date, ouverture, plus_haut, plus_bas, cloture, mm20, mm50, source_donnee, maj_le")
+      .select("date, ouverture, plus_haut, plus_bas, cloture, source_donnee, maj_le")
       .eq("ticker_id", ticker.id)
       .gte("date", depuis)
       .order("date", { ascending: true })
@@ -118,8 +112,6 @@ export async function lireSerie(
         plus_haut: p.plus_haut === null ? null : Number(p.plus_haut),
         plus_bas: p.plus_bas === null ? null : Number(p.plus_bas),
         cloture: Number(p.cloture),
-        mm20: p.mm20 === null ? null : Number(p.mm20),
-        mm50: p.mm50 === null ? null : Number(p.mm50),
       });
       source = p.source_donnee;
       majLe = p.maj_le;

@@ -29,8 +29,8 @@ Chaque utilisateur choisit les classes affichées (aucun réglage administrateur
 | Crypto | bitcoin, ether | clôtures Coinbase sur FRED (`CBBTCUSD`, `CBETHUSD`) + cours du moment CoinGecko | quotidienne + toutes les 15 min |
 
 Historique : 10 ans au premier chargement, puis rechargement des 30 derniers jours à
-chaque passage (les révisions officielles sont reprises). Moyennes mobiles 20 et 50
-jours calculées en base.
+chaque passage (les révisions officielles sont reprises). Le site n'affiche aucun
+indicateur technique : ni moyenne mobile sur les cartes, ni courbe superposée au graphique.
 
 FRED exige un en-tête `User-Agent` identifiant (les navigateurs génériques sont bloqués).
 Une série en panne est journalisée et ignorée sans bloquer les autres.

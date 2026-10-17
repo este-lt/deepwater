@@ -14,7 +14,6 @@ export async function GET(requete: Request) {
   const jours = PERIODES[params.get("periode") ?? "1a"] ?? PERIODES["1a"];
   if (!/^[A-Z0-9]{2,10}$/.test(symbole)) return Response.json({ erreur: "Symbole invalide." }, { status: 400 });
 
-  // Les moyennes mobiles sont stockées en base : pas besoin de marge avant la période.
   const depuis = new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
   const serie = await lireSerie(await supabaseUtilisateur(), symbole, depuis);
   if (!serie) return Response.json({ erreur: "Instrument inconnu ou inactif." }, { status: 404 });

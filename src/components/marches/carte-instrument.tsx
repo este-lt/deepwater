@@ -1,4 +1,3 @@
-import { Pastille } from "@/components/carte";
 import { Horodatage } from "@/components/horodatage";
 import { formaterDateSeance, formaterNombre, formaterPct, tonVariation } from "@/lib/format";
 import { type Langue, traducteur } from "@/lib/i18n";
@@ -6,22 +5,10 @@ import { type LigneMarche, nomInstrument } from "@/lib/marches";
 import { libelleSource } from "@/lib/sources";
 import { MiniCourbe } from "./mini-courbe";
 
-function PositionMoyenne({ libelle, cloture, moyenne, langue }: { libelle: string; cloture: number; moyenne: number | null; langue: Langue }) {
-  const t = traducteur(langue);
-  if (moyenne === null) return <Pastille ton="neutre">{libelle} {t("indisponible", "unavailable")}</Pastille>;
-  const ecart = ((cloture - moyenne) / moyenne) * 100;
-  return (
-    <Pastille ton={ecart >= 0 ? "hausse" : "baisse"}>
-      {ecart >= 0 ? t("Au-dessus", "Above") : t("Sous", "Below")} {libelle} ({formaterPct(ecart, 1, true, langue)})
-    </Pastille>
-  );
-}
-
 // Carte d'un indice prioritaire (S&P 500, Nasdaq-100).
 export function CarteInstrument({ ligne, langue, delai = 0 }: { ligne: LigneMarche; langue: Langue; delai?: number }) {
   const t = traducteur(langue);
   const ton = tonVariation(ligne.var1j);
-  const mm = t("MM", "MA");
   return (
     <article
       style={{ animationDelay: `${delai}ms` }}
@@ -45,10 +32,6 @@ export function CarteInstrument({ ligne, langue, delai = 0 }: { ligne: LigneMarc
         <span className="chiffres text-xs text-attenue">
           {formaterPct(ligne.var1m, 1, true, langue)} / {t("1 mois", "1 mo")} · {formaterPct(ligne.varAnnee, 1, true, langue)} {t("depuis janv.", "YTD")}
         </span>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        <PositionMoyenne libelle={`${mm}20`} cloture={ligne.cloture} moyenne={ligne.mm20} langue={langue} />
-        <PositionMoyenne libelle={`${mm}50`} cloture={ligne.cloture} moyenne={ligne.mm50} langue={langue} />
       </div>
       <Horodatage iso={ligne.majLe} source={libelleSource(ligne.source, langue)} seuilHeures={30} />
     </article>
