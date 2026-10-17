@@ -33,7 +33,7 @@ const CONSERVATION_SQUAWKS_JOURS = 7;
 
 async function lireFlux(url: string): Promise<ElementRss[]> {
   const reponse = await fetch(url, {
-    headers: { "User-Agent": "Deepwater-RSS/1.0 (+https://web-production-c0d8b.up.railway.app)", Accept: "application/rss+xml, application/xml, text/xml" },
+    headers: { "User-Agent": "Deepwater-RSS/1.0 (+https://deepwater1.up.railway.app)", Accept: "application/rss+xml, application/xml, text/xml" },
     signal: AbortSignal.timeout(20_000),
   });
   if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
