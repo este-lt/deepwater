@@ -59,8 +59,6 @@ export type PrixRow = {
   plus_bas: number | null;
   cloture: number;
   volume: number | null;
-  mm20: number | null;
-  mm50: number | null;
   source_donnee: string;
   maj_le: string;
 }
@@ -256,8 +254,6 @@ export type Database = {
           cloture: number;
           source_donnee: string;
           maj_le: string;
-          mm20: number | null;
-          mm50: number | null;
           precedente: number | null;
           il_y_a_1s: number | null;
           il_y_a_1m: number | null;
