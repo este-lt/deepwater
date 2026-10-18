@@ -31,7 +31,12 @@ export interface LigneMarche {
 // Séries hebdomadaires ou publiées avec décalage : plus de tolérance avant l'alerte.
 const TOLERANCE_JOURS: Record<string, number> = { NFCI: 10, DXY: 12, WTI: 6, BRENT: 6, NATGAS: 6 };
 
-const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+// Valeur numérique ou null : une valeur non numérique en base (NaN, infini) est ignorée.
+export const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 function ecart(type: LigneMarche["variation"], actuel: number, avant: number | null): number | null {
   if (avant === null || !Number.isFinite(avant)) return null;
@@ -43,10 +48,11 @@ function ecart(type: LigneMarche["variation"], actuel: number, avant: number | n
 export async function lireMarches(supabase: ClientSupabase): Promise<LigneMarche[]> {
   const { data, error } = await supabase.rpc("resume_marches");
   if (error) throw new Error(`Lecture des marchés impossible : ${error.message}`);
-  return (data ?? []).map((l) => {
-    const cloture = Number(l.cloture);
+  return (data ?? []).flatMap((l): LigneMarche[] => {
+    const cloture = num(l.cloture);
+    if (cloture === null) return [];
     const type = l.variation as LigneMarche["variation"];
-    return {
+    return [{
       symbole: l.symbole,
       nom: l.nom,
       nomEn: l.nom_en,
@@ -64,9 +70,9 @@ export async function lireMarches(supabase: ClientSupabase): Promise<LigneMarche
       var1s: ecart(type, cloture, num(l.il_y_a_1s)),
       var1m: ecart(type, cloture, num(l.il_y_a_1m)),
       varAnnee: ecart(type, cloture, num(l.fin_annee)),
-      courbe: (l.courbe ?? []).map(Number),
+      courbe: (l.courbe ?? []).map(Number).filter(Number.isFinite),
       ancienne: valeurAncienne(l.date, TOLERANCE_JOURS[l.symbole] ?? 4),
-    };
+    }];
   });
 }
 
@@ -106,12 +112,14 @@ export async function lireSerie(
       .range(debut, debut + 999);
     if (erreurPrix) throw new Error(`Lecture de la série impossible : ${erreurPrix.message}`);
     for (const p of data ?? []) {
+      const cloture = num(p.cloture);
+      if (cloture === null) continue;
       points.push({
         date: p.date,
-        ouverture: p.ouverture === null ? null : Number(p.ouverture),
-        plus_haut: p.plus_haut === null ? null : Number(p.plus_haut),
-        plus_bas: p.plus_bas === null ? null : Number(p.plus_bas),
-        cloture: Number(p.cloture),
+        ouverture: num(p.ouverture),
+        plus_haut: num(p.plus_haut),
+        plus_bas: num(p.plus_bas),
+        cloture,
       });
       source = p.source_donnee;
       majLe = p.maj_le;
@@ -153,7 +161,10 @@ export async function lireClotures(
       .order("ticker_id", { ascending: true })
       .range(debut, debut + 999);
     if (e) throw new Error(`Lecture des clôtures impossible : ${e.message}`);
-    for (const p of data ?? []) series.get(parId.get(p.ticker_id)!)?.push({ date: p.date, cloture: Number(p.cloture) });
+    for (const p of data ?? []) {
+      const cloture = num(p.cloture);
+      if (cloture !== null) series.get(parId.get(p.ticker_id)!)?.push({ date: p.date, cloture });
+    }
     if ((data ?? []).length < 1000) break;
   }
   return series;

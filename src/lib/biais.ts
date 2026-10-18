@@ -1,4 +1,5 @@
 import "server-only";
+import { estFerieNyse } from "./feries";
 import type { ClientSupabase } from "./supabase";
 import type { BiaisRow, ValidationRow } from "./types-supabase";
 
@@ -52,7 +53,8 @@ export interface EtatBiais {
 const INDICES = ["SPX", "NDX"];
 
 // Même règle que supabase/functions/calcul-biais/facteurs.ts (seanceVisee) : séance
-// du jour à New York tant que la clôture de 16 h n'est pas passée, sinon la suivante.
+// du jour à New York tant que la clôture de 16 h n'est pas passée, sinon la suivante ;
+// week-ends et jours fériés de la Bourse de New York sautés.
 export function seanceVisee(maintenant: Date): string {
   const p = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
@@ -60,9 +62,12 @@ export function seanceVisee(maintenant: Date): string {
     }).formatToParts(maintenant).map((x) => [x.type, x.value]),
   );
   let jour = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day));
-  const semaine = (t: number) => new Date(t).getUTCDay();
-  if (semaine(jour) === 0 || semaine(jour) === 6 || Number(p.hour) >= 16) jour += 86_400_000;
-  while (semaine(jour) === 0 || semaine(jour) === 6) jour += 86_400_000;
+  const ouvert = (t: number) => {
+    const s = new Date(t).getUTCDay();
+    return s !== 0 && s !== 6 && !estFerieNyse(new Date(t).toISOString().slice(0, 10));
+  };
+  if (!ouvert(jour) || Number(p.hour) >= 16) jour += 86_400_000;
+  while (!ouvert(jour)) jour += 86_400_000;
   return new Date(jour).toISOString().slice(0, 10);
 }
 

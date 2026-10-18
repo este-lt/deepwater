@@ -1,6 +1,7 @@
 // Règles du biais quotidien : fichier de configuration modifiable.
 // Uniquement des données fondamentales et de marché concrètes (politique de la Fed, taux,
-// statistiques publiées, volatilité implicite, crédit, conditions financières) : aucun
+// statistiques publiées, régime macroéconomique, dollar, courbe des taux, volatilité
+// implicite, crédit, conditions financières) : aucun
 // indicateur ni concept d'analyse technique (ni moyenne mobile, ni momentum, ni niveau de prix).
 // Chaque facteur donne une note entre -1 (baissier) et +1 (haussier). Le score final
 // est la moyenne pondérée des facteurs disponibles ; un facteur sans donnée récente
@@ -10,7 +11,7 @@
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
 export const REGLES_BIAIS = {
-  version: "2026-10-19",
+  version: "2026-10-19b",
 
   // Conversion du score (entre -1 et +1) en biais.
   seuils: { haussier: 0.2, baissier: -0.2 },
@@ -21,14 +22,14 @@ export const REGLES_BIAIS = {
   indices: {
     SPX: {
       libelle: "S&P 500",
-      poids: { fed: 0.25, taux: 0.2, macro: 0.2, risque: 0.2, conditions: 0.15 },
+      poids: { fed: 0.2, taux: 0.15, macro: 0.15, cycle: 0.15, dollar: 0.1, courbe: 0.05, risque: 0.1, conditions: 0.1 },
       // Indice de volatilité implicite propre à l'indice.
       volatilite: "VIX",
     },
     NDX: {
       libelle: "Nasdaq-100",
       // Les valeurs technologiques réagissent davantage aux taux longs.
-      poids: { fed: 0.25, taux: 0.25, macro: 0.15, risque: 0.2, conditions: 0.15 },
+      poids: { fed: 0.2, taux: 0.2, macro: 0.1, cycle: 0.15, dollar: 0.1, courbe: 0.05, risque: 0.1, conditions: 0.1 },
       volatilite: "VXN",
     },
   },
@@ -76,6 +77,46 @@ export const REGLES_BIAIS = {
     } as Record<string, { libelle: string; libelle_en: string; sens: 1 | -1; ecartPlein: number; unite: "pt" | "k" }>,
   },
 
+  // Régime macroéconomique (croissance × inflation : expansion, reflation, déflation,
+  // stagflation). Croissance : emplois créés (moyenne sur 3 mois), évolution du chômage sur
+  // 3 mois, PIB annualisé. Inflation : PCE sous-jacent face à la cible de 2 % de la Fed
+  // (mandat), accélération du CPI sur 3 mois, pétrole sur 3 mois (anticipation). Les actions
+  // aiment la croissance et craignent l'inflation : note = 0,6 x croissance - 0,4 x inflation.
+  cycle: {
+    emploisNeutresK: 100, // emplois créés par mois jugés neutres (milliers)
+    emploisPleinsK: 100, // écart à ce niveau qui donne une note pleine
+    chomagePleinPts: 0.3, // hausse du chômage sur 3 mois -> note -1
+    pibNeutre: 2, // croissance annualisée jugée neutre (%)
+    pibPlein: 2,
+    cibleInflation: 2, // cible de la Fed (PCE)
+    inflationPleinePts: 1.5, // PCE sous-jacent 1,5 pt au-dessus de la cible -> note +1
+    tendanceCpiPleinePts: 0.5, // CPI sur 1 an +0,5 pt en 3 mois -> note +1
+    petroleSeances: 63, // environ 3 mois
+    petrolePleinPct: 30,
+    partCroissance: 0.6,
+    ageMaxJoursMensuel: 95, // le PCE d'un mois paraît environ deux mois après son début
+    ageMaxJoursTrimestriel: 200,
+    ageMaxJoursPetrole: 10,
+  },
+
+  // Dollar (indice large de la Fed, DXY) : fiche de corrélations, un dollar qui monte fait
+  // baisser le S&P 500 (résultats des multinationales, conditions financières mondiales).
+  dollar: {
+    serie: "DXY",
+    seancesVariation: 20,
+    variationPleinePct: 2, // +2 % en 20 séances -> note -1
+    ageMaxJours: 14, // série publiée chaque semaine
+  },
+
+  // Courbe des taux : une courbe inversée (taux courts au-dessus du 10 ans) annonce
+  // historiquement un ralentissement ; une pente normale est légèrement favorable.
+  courbe: {
+    inversionPleinePts: 0.5, // 10 ans 0,5 pt sous le taux court -> note -1
+    pentePleinePts: 1.5,
+    plafondPositif: 0.5, // une pente normale ne donne jamais plus de +0,5
+    ageMaxJours: 7,
+  },
+
   // Appétit pour le risque : volatilité implicite des options (VIX ou VXN) et spread de
   // crédit à haut rendement. Une volatilité au-dessus de sa médiane d'un an ou un spread
   // qui s'écarte = baissier.
@@ -103,4 +144,4 @@ export const REGLES_BIAIS = {
 };
 
 export type CleIndice = keyof typeof REGLES_BIAIS.indices;
-export type CleFacteur = "fed" | "taux" | "macro" | "risque" | "conditions";
+export type CleFacteur = "fed" | "taux" | "macro" | "cycle" | "dollar" | "courbe" | "risque" | "conditions";

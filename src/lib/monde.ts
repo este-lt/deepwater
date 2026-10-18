@@ -12,6 +12,7 @@ import {
   type Paire,
   type Point,
   type Regime,
+  variation,
 } from "./analyse";
 import { lireClotures } from "./marches";
 import type { ClientSupabase } from "./supabase";
@@ -73,11 +74,15 @@ export async function lireMonde(supabase: ClientSupabase): Promise<EtatMonde> {
   if (macro.error) throw new Error(`Lecture de la macro mondiale impossible : ${macro.error.message}`);
 
   const decisions: Partial<Record<Devise, Point[]>> = {};
-  for (const l of taux.data ?? []) (decisions[l.devise as Devise] ??= []).push({ date: l.date, valeur: Number(l.taux) });
+  for (const l of taux.data ?? []) {
+    const valeur = Number(l.taux);
+    if (Number.isFinite(valeur)) (decisions[l.devise as Devise] ??= []).push({ date: l.date, valeur });
+  }
   const series: Record<string, Partial<Record<Devise, Point[]>>> = { INFLATION: {}, CHOMAGE: {}, PIB: {} };
   for (const l of macro.data ?? []) {
     const [, m, d] = l.indicateur.split(":");
-    if (series[m]) (series[m][d as Devise] ??= []).push({ date: l.date, valeur: Number(l.valeur) });
+    const valeur = Number(l.valeur);
+    if (series[m] && Number.isFinite(valeur)) (series[m][d as Devise] ??= []).push({ date: l.date, valeur });
   }
   const majLe = [...(taux.data ?? []), ...(macro.data ?? [])].reduce<string | null>((max, l) => (max === null || l.maj_le > max ? l.maj_le : max), null);
 
@@ -118,8 +123,9 @@ export const ACTIFS_CORRELATION = [
   { symbole: "BTC", mode: "pct" as const },
 ];
 
-// Corrélations (cours) et régime (VIX, spread haut rendement, conditions financières).
-const SYMBOLES = ["SPX", "NDX", "VIX", "HY", "NFCI", "US10Y", "EURUSD", "USDJPY", "USDCHF", "AUDUSD", "XAU", "WTI", "BTC"];
+// Corrélations (cours), régime (VIX, spread haut rendement, conditions financières) et actifs
+// moteurs des corrélations inter-marchés des devises (pétrole, or, S&P 500, yuan).
+const SYMBOLES = ["SPX", "NDX", "VIX", "HY", "NFCI", "US10Y", "EURUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCNY", "XAU", "WTI", "BTC"];
 
 export interface EtatAnalyses {
   regime: Regime;
@@ -140,6 +146,12 @@ export async function lireAnalyses(supabase: ClientSupabase, monde: EtatMonde): 
     chomage: monde.chomage,
     pib: monde.pib,
     regime: regime.score,
+    moteurs: {
+      petrole: variation(clotures.WTI ?? [], 20),
+      or: variation(clotures.XAU ?? [], 20),
+      sp500: variation(clotures.SPX ?? [], 20),
+      yuan: ((v) => (v === null ? null : -v))(variation(clotures.USDCNY ?? [], 20)),
+    },
     aujourdhui: new Date().toISOString().slice(0, 10),
   });
   return {

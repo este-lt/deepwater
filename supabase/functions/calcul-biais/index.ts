@@ -1,7 +1,8 @@
 // Biais quotidien du S&P 500 et du Nasdaq-100, calculé une seule fois pour tout le
 // monde à partir des données déjà en base (aucun appel d'API externe), uniquement sur
-// des données concrètes : politique de la Fed, taux, statistiques, volatilité implicite,
-// crédit, conditions financières. Aucune analyse technique.
+// des données concrètes : politique de la Fed, taux, statistiques, régime macroéconomique,
+// dollar, courbe des taux, volatilité implicite, crédit, conditions financières. Aucune
+// analyse technique.
 // Appelé par pg_cron (mode "auto", si au moins un utilisateur l'a activé) ou par le
 // bouton de calcul manuel (mode "manuel", limité par utilisateur côté serveur).
 import { servirTacheProtegee } from "../_shared/garde.ts";
@@ -11,10 +12,14 @@ import { admin } from "../_shared/supabase.ts";
 import {
   combiner,
   facteurConditions,
+  facteurCourbe,
+  facteurDollar,
   facteurFed,
   facteurMacro,
+  facteurRegimeMacro,
   facteurRisque,
   facteurTaux,
+  type PointMacro,
   type PointTaux,
   type PublicationMacro,
   seanceVisee,
@@ -29,21 +34,30 @@ servirTacheProtegee(async (corps) => {
     const db = admin();
     const seance = seanceVisee(new Date());
     const aujourdhui = new Date().toISOString().slice(0, 10);
-    const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions } = REGLES_BIAIS;
+    const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions, dollar: rDollar } = REGLES_BIAIS;
     const volatilites = Object.values(REGLES_BIAIS.indices).map((i) => i.volatilite);
-    const symboles = [...new Set([rRisque.credit, ...volatilites, "US2Y", "FFR", "US10R", rConditions.serie])];
+    const symboles = [...new Set([rRisque.credit, ...volatilites, "US2Y", "FFR", "US10R", rConditions.serie, rDollar.serie, "WTI"])];
+    // Séries macro américaines brutes (FRED) du régime macroéconomique.
+    const SERIES_CYCLE = { emplois: "NONFARM_PAYROLL", chomage: "UNEMPLOYMENT", pib: "REAL_GDP", cpi: "CPI", pce: "CORE_PCE" } as const;
 
-    const [tickers, taux, publications, decisions] = await Promise.all([
+    const [tickers, taux, tauxCourts, publications, decisions, macroUs] = await Promise.all([
       db.from("tickers_suivis").select("id, symbole").in("symbole", [...Object.keys(REGLES_BIAIS.indices), ...symboles]),
       db.from("taux_tresor").select("date, taux, source_donnee").eq("maturite", rTaux.maturite).gte("date", jourMoins(60)).order("date"),
+      db.from("taux_tresor").select("date, maturite, taux").in("maturite", ["3month", "2year"]).gte("date", jourMoins(30)).order("date"),
       db.from("calendrier_economique")
         .select("indicateur, date_reference, date_evenement, valeur, variation")
         .eq("type_evenement", "publication")
         .gte("date_evenement", jourMoins(rMacro.fenetreJours))
         .order("date_evenement", { ascending: false }),
       db.from("taux_directeurs").select("date, taux").eq("devise", "USD").gte("date", jourMoins(3 * 366)).order("date"),
+      db.from("indicateurs_macro").select("indicateur, date, valeur").in("indicateur", Object.values(SERIES_CYCLE)).gte("date", jourMoins(2 * 366)).order("date"),
     ]);
-    for (const [nom, r] of [["instruments", tickers], ["taux", taux], ["calendrier", publications], ["décisions de la Fed", decisions]] as const) {
+    for (
+      const [nom, r] of [
+        ["instruments", tickers], ["taux", taux], ["taux courts", tauxCourts], ["calendrier", publications],
+        ["décisions de la Fed", decisions], ["macro américaine", macroUs],
+      ] as const
+    ) {
       if (r.error) throw new Error(`Lecture ${nom} impossible : ${r.error.message}`);
     }
     const idDe = new Map((tickers.data ?? []).map((t) => [t.symbole, t.id]));
@@ -76,6 +90,13 @@ servirTacheProtegee(async (corps) => {
     const sourceTaux = "FRED (DGS10, DFII10)";
     const decisionsFed = (decisions.data ?? []).map((d) => ({ date: d.date, taux: Number(d.taux) }));
     const serie = (s: string) => series.get(s) ?? [];
+    const courts = (m: string) => (tauxCourts.data ?? []).filter((p) => p.maturite === m).map((p) => ({ date: p.date, taux: Number(p.taux) }));
+    const macro = (cle: string): PointMacro[] =>
+      (macroUs.data ?? []).filter((p) => p.indicateur === cle).map((p) => ({ date: p.date, valeur: Number(p.valeur) }));
+    const seriesCycle = {
+      emplois: macro(SERIES_CYCLE.emplois), chomage: macro(SERIES_CYCLE.chomage), pib: macro(SERIES_CYCLE.pib),
+      cpi: macro(SERIES_CYCLE.cpi), pce: macro(SERIES_CYCLE.pce),
+    };
 
     const bilan: Record<string, string> = {};
     for (const indice of Object.keys(REGLES_BIAIS.indices) as CleIndice[]) {
@@ -86,6 +107,9 @@ servirTacheProtegee(async (corps) => {
         facteurFed(indice, serie("US2Y"), serie("FFR"), decisionsFed, aujourdhui),
         facteurTaux(indice, serieTaux, serie("US10R"), aujourdhui, sourceTaux),
         facteurMacro(indice, [...dernieres.values()], aujourdhui, "FRED (BLS, BEA)"),
+        facteurRegimeMacro(indice, seriesCycle, serie("WTI"), aujourdhui),
+        facteurDollar(indice, serie(rDollar.serie), aujourdhui),
+        facteurCourbe(indice, courts("3month"), courts("2year"), serieTaux, aujourdhui),
         facteurRisque(indice, serie(REGLES_BIAIS.indices[indice].volatilite), serie(rRisque.credit), aujourdhui),
         facteurConditions(indice, serie(rConditions.serie), aujourdhui),
       ]);

@@ -2,10 +2,14 @@
 import {
   combiner,
   facteurConditions,
+  facteurCourbe,
+  facteurDollar,
   facteurFed,
   facteurMacro,
+  facteurRegimeMacro,
   facteurRisque,
   facteurTaux,
+  type PointMacro,
   type PointTaux,
   seanceVisee,
 } from "./facteurs.ts";
@@ -26,6 +30,9 @@ Deno.test("séance visée : heure de New York, changement d'heure et week-end", 
   egal("hiver avant clôture", seanceVisee(new Date("2026-11-03T20:30:00Z")), "2026-11-03");
   // 08/03/2026 03:00 UTC = samedi 22:00 à New York -> lundi.
   egal("samedi", seanceVisee(new Date("2026-03-08T03:00:00Z")), "2026-03-09");
+  // Jours fériés de la Bourse de New York : Thanksgiving (jeudi 26/11) et Noël (vendredi 25/12).
+  egal("veille de Thanksgiving", seanceVisee(new Date("2026-11-25T22:00:00Z")), "2026-11-27");
+  egal("Noël", seanceVisee(new Date("2026-12-25T15:00:00Z")), "2026-12-28");
 });
 
 Deno.test("Fed : hausses anticipées par le taux à 2 ans et hausse décidée = baissier", () => {
@@ -61,6 +68,11 @@ Deno.test("taux : moitié variation sur 5 séances, moitié niveau du taux réel
   egal("baisse", facteurTaux("SPX", serie(4, 3.8), serie(0.5, 0.3), "2026-10-01", "fred").note, 1);
   // Sans taux réel : seule la variation du nominal compte.
   egal("nominal seul", facteurTaux("SPX", serie(4, 4.2), [], "2026-10-01", "fred").note, -1);
+  // Une valeur non numérique en base est ignorée (jamais « NaN » dans le texte ni la note).
+  const avecNaN = [...serie(4, 4.2), { date: "2026-10-01", taux: NaN }];
+  const f = facteurTaux("SPX", avecNaN, [], "2026-10-01", "fred");
+  egal("NaN ignoré", f.note, -1);
+  if (f.texte.includes("NaN")) throw new Error(f.texte);
 });
 
 Deno.test("macro : sens par indicateur et fenêtre de fraîcheur", () => {
@@ -95,15 +107,54 @@ Deno.test("conditions financières : plus souples que la moyenne et qui s'assoup
   egal("trop ancien", facteurConditions("SPX", nfci, "2026-11-30").statut, "indisponible");
 });
 
+Deno.test("dollar : +2 % en 20 séances = baissier pour les actions (fiche de corrélations)", () => {
+  // 5 séances à 100, puis 20 séances jusqu'à 102 : la référence (20 séances avant) vaut 100.
+  const dxy = Array.from({ length: 25 }, (_, i) => point(24 - i, i < 5 ? 100 : 100 + (2 * (i - 4)) / 20));
+  const f = facteurDollar("SPX", dxy, "2026-10-16");
+  egal("note", f.note, -1);
+  if (!f.texte.includes("un dollar qui monte pèse sur les actions")) throw new Error(f.texte);
+  egal("trop ancien", facteurDollar("SPX", dxy, "2026-11-30").statut, "indisponible");
+});
+
+Deno.test("courbe des taux : inversion = baissier, pente normale légèrement favorable", () => {
+  // Valeurs réelles du 15/10/2026 : 3 mois 4,28 %, 2 ans 4,77 %, 10 ans 5,10 %.
+  const normale = facteurCourbe("SPX", [point(1, 4.28)], [point(1, 4.77)], [point(1, 5.1)], "2026-10-16");
+  // 0,5 x borner(0,33 / 1,5) = 0,11 ; 0,5 x borner(0,82 / 1,5) = 0,273 ; moyenne 0,192.
+  egal("normale", normale.note, 0.192);
+  if (!normale.texte.includes("10 ans − 2 ans +33 pb") || !normale.texte.includes("pente normale")) throw new Error(normale.texte);
+  const inversee = facteurCourbe("SPX", [point(1, 5.6)], [point(1, 5.6)], [point(1, 5.1)], "2026-10-16");
+  egal("inversée", inversee.note, -1);
+  if (!inversee.texte.includes("courbe inversée")) throw new Error(inversee.texte);
+});
+
+Deno.test("régime macro : croissance qui cale et inflation qui accélère = stagflation", () => {
+  const mensuel = (valeurs: Record<string, number>): PointMacro[] => Object.entries(valeurs).map(([date, valeur]) => ({ date, valeur }));
+  const petrole = Array.from({ length: 64 }, (_, i) => point(63 - i, i === 0 ? 100 : 100 + (30 * i) / 63));
+  const f = facteurRegimeMacro("SPX", {
+    emplois: mensuel({ "2026-06-01": 158_910, "2026-09-01": 159_000 }), // +30 k par mois
+    chomage: mensuel({ "2026-06-01": 3.9, "2026-09-01": 4.2 }), // +0,3 pt
+    pib: mensuel({ "2026-01-01": 24_000, "2026-04-01": 24_000 }), // 0 %
+    cpi: mensuel({ "2025-06-01": 100, "2025-09-01": 100, "2026-06-01": 103.5, "2026-09-01": 104 }), // 3,5 % -> 4 %
+    pce: mensuel({ "2025-09-01": 100, "2026-09-01": 103.5 }), // 3,5 % pour une cible de 2 %
+  }, petrole, "2026-10-16");
+  // Croissance : (-0,7 - 1 - 1) / 3 = -0,9 ; inflation : (1 + 1 + 1) / 3 = 1 ; 0,6 x -0,9 - 0,4 x 1 = -0,94.
+  egal("note", f.note, -0.94);
+  if (!f.texte.startsWith("Régime macro : stagflation") || !f.texte.includes("cible de la Fed : 2 %") || !f.texte.includes("pétrole +30 %")) {
+    throw new Error(f.texte);
+  }
+  if (!f.texte_en.startsWith("Macro regime: stagflation")) throw new Error(f.texte_en);
+  egal("sans inflation", facteurRegimeMacro("SPX", { emplois: [], chomage: [], pib: [], cpi: [], pce: [] }, [], "2026-10-16").statut, "indisponible");
+});
+
 Deno.test("synthèse : facteur indisponible retiré, pas de biais sous la moitié des poids, raisons", () => {
   const fed = facteurFed("SPX", [point(1, 4.77)], [point(1, 3.88)], [], "2026-10-16");
   const conditions = facteurConditions("SPX", [{ date: jourAvant(7), taux: -0.5 }], "2026-10-16");
   const macro = facteurMacro("SPX", [], "2026-10-16", "av");
   const partiel = combiner([fed, conditions, macro]);
-  // Fed (0,25) + conditions (0,15) sur 0,6 : 67 % disponibles.
+  // Fed (0,2) + conditions (0,1) sur 0,45 : 67 % disponibles.
   if (!partiel.ok) throw new Error(partiel.raison);
-  // (0,25 x -1 + 0,15 x 1) / 0,4 = -0,25 -> baissier.
-  egal("score", partiel.score, -0.25);
+  // Contributions arrondies : 0,2 x -1 / 0,3 = -0,667 ; 0,1 x 1 / 0,3 = 0,333 ; score -0,334 -> baissier.
+  egal("score", partiel.score, -0.334);
   egal("biais", partiel.biais, "baissier");
   egal("raisons", partiel.raisons.length, 2);
   const trop = combiner([conditions, macro, facteurFed("SPX", [], [], [], "2026-10-16")]);

@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { Carte, Pastille } from "@/components/carte";
 import { DateLocale, Horodatage } from "@/components/horodatage";
 import type { Devise, ForceDevise } from "@/lib/analyse";
-import { formaterDateSeance, formaterPb, formaterPct, formaterPeriode } from "@/lib/format";
+import { formaterDateSeance, formaterPb, formaterPct } from "@/lib/format";
 import { type Langue, traducteur } from "@/lib/i18n";
-import { BANQUES, type EtatMonde, type Mesure } from "@/lib/monde";
+import { BANQUES, type EtatMonde } from "@/lib/monde";
 import type { EtatCalendrier } from "@/lib/veille";
 
 // Décisions de taux annoncées dans le calendrier de la semaine (Forex Factory) ou les
@@ -27,21 +27,6 @@ function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) 
   );
 }
 
-function ValeurMesure({ m, langue, signe = false }: { m: Mesure | null; langue: Langue; signe?: boolean }) {
-  const t = traducteur(langue);
-  if (!m) return <span className="text-discret">{t("indisponible", "unavailable")}</span>;
-  const delta = m.precedente === null ? null : m.valeur - m.precedente;
-  return (
-    <>
-      <span className="font-medium">{formaterPct(m.valeur, 1, signe, langue)}</span>
-      <span className="block text-[0.7rem] text-discret">
-        {delta !== null && Math.abs(delta) >= 0.05 ? (delta > 0 ? "↗ " : "↘ ") : "→ "}
-        {formaterPeriode(m.date, m.trimestrielle ? "trimestre" : "mois", langue)}
-      </span>
-    </>
-  );
-}
-
 // Couleurs sans jugement : une politique restrictive n'est ni bonne ni mauvaise en soi.
 const TON_ORIENTATION = { restrictive: "alerte", accommodante: "accent", neutre: "neutre" } as const;
 
@@ -56,10 +41,10 @@ export function SectionBanques({ monde, forces, calendrier, langue }: { monde: E
 
   return (
     <Carte
-      titre={t("Banques centrales et macro mondiale", "Central banks and global macro")}
+      titre={t("Banques centrales", "Central banks")}
       sousTitre={t(
-        "Taux directeurs, dernier mouvement, orientation déduite des décisions récentes et de la tendance de l'inflation ; inflation sur 1 an, chômage, croissance du PIB sur 1 trimestre.",
-        "Policy rates, last move, stance inferred from recent decisions and the inflation trend; inflation y/y, unemployment, GDP growth q/q.",
+        "Taux directeurs, dernier mouvement, orientation déduite des décisions récentes et de la tendance de l'inflation, taux réel, prochaine décision. Inflation, chômage et PIB : widget Macroéconomie.",
+        "Policy rates, last move, stance inferred from recent decisions and the inflation trend, real rate, next decision. Inflation, jobs and GDP: Macro widget.",
       )}
       pied={
         <div className="flex flex-col gap-1">
@@ -105,12 +90,9 @@ export function SectionBanques({ monde, forces, calendrier, langue }: { monde: E
                     <span className="block text-[0.7rem] text-discret">{formaterDateSeance(l.precedentDate, langue)}</span>
                   </Ligne>
                 )}
-                <Ligne libelle={t("Inflation", "Inflation")}><ValeurMesure m={l.inflation} langue={langue} /></Ligne>
                 <Ligne libelle={t("Taux réel", "Real rate")}>
                   {l.tauxReel === null ? <span className="text-discret">—</span> : <span className="font-medium">{formaterPct(l.tauxReel, 1, true, langue)}</span>}
                 </Ligne>
-                <Ligne libelle={t("Chômage", "Unemployment")}><ValeurMesure m={l.chomage} langue={langue} /></Ligne>
-                <Ligne libelle={t("PIB (trimestre)", "GDP (q/q)")}><ValeurMesure m={l.pib} langue={langue} signe /></Ligne>
                 <Ligne libelle={t("Prochaine décision", "Next decision")}>
                   {decision ? (
                     <span className="font-medium text-alerte">

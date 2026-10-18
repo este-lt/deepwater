@@ -78,7 +78,38 @@ Deno.test("Force des devises : AUD fort (portage, taux réel, hausses de taux, c
   const paires = classerPaires(forces);
   assertEquals(paires[0].paire, "AUD/JPY");
   assertEquals(paires[0].sens, "achat");
-  // Les cinq facteurs fondamentaux vont dans le même sens : 5 étoiles.
+  // Les cinq facteurs fondamentaux vont dans le même sens ; les corrélations (dollar seul ici)
+  // pèsent autant sur l'AUD que sur le JPY : 5 étoiles sur 6.
   assertEquals(paires[0].etoiles, 5);
-  assertEquals(Object.keys(forces[0].facteurs), ["portage", "tauxReel", "orientation", "macro", "regime"]);
+  assertEquals(Object.keys(forces[0].facteurs), ["portage", "tauxReel", "orientation", "macro", "regime", "intermarche"]);
+});
+
+Deno.test("Corrélations inter-marchés (fiche Aupa Traders) : pétrole -> CAD, or et S&P 500 -> CHF, dollar -> EUR", () => {
+  const d = (date: string, valeur: number) => ({ date, valeur });
+  const base = {
+    decisions: {
+      USD: [d("2025-12-11", 3.625), d("2026-09-17", 3.875)], EUR: [d("2026-06-17", 2.25)], GBP: [d("2025-12-18", 3.75)],
+      CHF: [d("2025-06-20", 0)], CAD: [d("2025-10-30", 2.25)], AUD: [d("2026-09-30", 4.6)], NZD: [d("2026-09-03", 2.75)], JPY: [d("2026-09-24", 1.25)],
+    },
+    inflation: {}, chomage: {}, pib: {}, regime: 0, aujourdhui: "2026-10-17",
+  };
+  const parDevise = (moteurs: Record<string, number | null>) =>
+    new Map(calculerForceDevises({ ...base, moteurs }).map((f) => [f.devise, f]));
+  // Pétrole +10 % sur 20 séances : note pleine pour le CAD (avec le dollar, aussi favorable au CAD).
+  const hausse = parDevise({ petrole: 10, or: 5, sp500: -5, yuan: null });
+  const cad = hausse.get("CAD")!;
+  assertEquals(cad.liens.map((l) => l.moteur), ["petrole", "USD"]);
+  assertEquals(cad.liens[0].note, 1);
+  // Or +5 % et S&P 500 -5 % : les deux poussent le CHF (valeur refuge).
+  assertEquals(hausse.get("CHF")!.facteurs.intermarche, 1);
+  // Dollar fondamentalement fort : l'euro le subit à l'inverse.
+  const usd = hausse.get("USD")!;
+  assertEquals(usd.facteurs.intermarche, null);
+  const lienEur = hausse.get("EUR")!.liens[0];
+  assert(lienEur.moteur === "USD" && lienEur.valeur !== null && lienEur.valeur > 0, "dollar fort");
+  assertAlmostEquals(lienEur.note!, -lienEur.valeur, 1e-12);
+  // Sans moteur disponible : facteur indisponible, poids retiré, score toujours calculé.
+  const sans = parDevise({ petrole: null, or: null, sp500: null, yuan: null });
+  assertEquals(sans.get("CHF")!.facteurs.intermarche, null);
+  assert(sans.get("CHF")!.score !== null, "score sans corrélations");
 });

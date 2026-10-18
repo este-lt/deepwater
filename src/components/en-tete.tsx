@@ -2,12 +2,20 @@ import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { traducteur } from "@/lib/i18n";
 import { lirePreferences } from "@/lib/preferences";
+import { supabaseUtilisateur } from "@/lib/supabase";
 import { Logo } from "./logo";
 
 const LIEN = "whitespace-nowrap rounded-lg px-2.5 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte sm:px-3";
 
+// Alertes de fonctionnement ouvertes (tâche en retard ou en échec), lisibles par l'admin seul.
+async function alertesOuvertes(): Promise<number> {
+  const { count } = await (await supabaseUtilisateur()).from("alertes").select("id", { count: "exact", head: true }).is("resolue_le", null);
+  return count ?? 0;
+}
+
 export async function EnTete({ estAdmin }: { estAdmin: boolean }) {
   const t = traducteur((await lirePreferences()).langue);
+  const alertes = estAdmin ? await alertesOuvertes().catch(() => 0) : 0;
   return (
     <header className="barre-haute sticky top-0 z-20 border-b border-bordure bg-fond/75 backdrop-blur-xl backdrop-saturate-150">
       <div className="marges-securite mx-auto flex max-w-[90rem] items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -44,7 +52,19 @@ export async function EnTete({ estAdmin }: { estAdmin: boolean }) {
               <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" strokeLinecap="round" />
             </svg>
           </Link>
-          {estAdmin && <Link href="/admin" className={LIEN}>Admin</Link>}
+          {estAdmin && (
+            <Link href="/admin" className={LIEN}>
+              Admin
+              {alertes > 0 && (
+                <span
+                  title={t(`${alertes} alerte(s) de fonctionnement`, `${alertes} operational alert(s)`)}
+                  className="chiffres ml-1.5 rounded-full bg-baisse px-1.5 py-px text-[0.7rem] font-semibold text-white"
+                >
+                  {alertes}
+                </span>
+              )}
+            </Link>
+          )}
           <span className="ml-2 inline-flex shrink-0">
             <UserButton />
           </span>

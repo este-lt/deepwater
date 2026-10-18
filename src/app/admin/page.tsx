@@ -30,7 +30,8 @@ export default async function PageAdmin() {
   const t = traducteur((await lirePreferences()).langue);
   const supabase = await supabaseUtilisateur();
 
-  const [taches, logs, cron, quota, premium] = await Promise.all([
+  const [alertes, taches, logs, cron, quota, premium] = await Promise.all([
+    supabase.from("alertes").select("*").order("ouverte_le", { ascending: false }).limit(15),
     supabase.from("taches_planifiees").select("*").order("nom_tache"),
     supabase.from("logs_taches").select("*").order("demarre_le", { ascending: false }).limit(60),
     supabase.rpc("admin_etat_cron"),
@@ -61,6 +62,35 @@ export default async function PageAdmin() {
             )}
           </p>
         </div>
+
+        <Carte
+          titre={t("Alertes de fonctionnement", "Operational alerts")}
+          sousTitre={t(
+            "Tâche sans réussite depuis son délai d'alerte, ou en échec deux fois de suite. Contrôle toutes les 10 minutes ; notification par webhook si « alerte_webhook_url » est rangé dans le Vault.",
+            "Job without success beyond its alert delay, or failing twice in a row. Checked every 10 minutes; webhook notification if “alerte_webhook_url” is stored in the Vault.",
+          )}
+        >
+          {(alertes.data ?? []).length === 0 ? (
+            <p className="text-sm text-hausse">{t("Aucune alerte : toutes les tâches actives fonctionnent.", "No alert: all active jobs are running.")}</p>
+          ) : (
+            <ul className="divide-y divide-bordure text-sm">
+              {(alertes.data ?? []).map((a) => (
+                <li key={a.id} className="flex flex-wrap items-start justify-between gap-2 py-2">
+                  <span className="min-w-0">
+                    <span className="font-medium">{a.nom_tache}</span>
+                    <span className="block text-xs text-attenue">{a.message}</span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1 text-xs text-attenue">
+                    <Pastille ton={a.resolue_le ? "hausse" : "baisse"}>
+                      {a.resolue_le ? t("Refermée", "Resolved") : a.motif === "retard" ? t("En retard", "Late") : t("Échecs répétés", "Repeated failures")}
+                    </Pastille>
+                    <DateLocale iso={a.resolue_le ?? a.ouverte_le} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Carte>
 
         <SectionPremium premium={premium.data?.valeur === true} t={t} />
 

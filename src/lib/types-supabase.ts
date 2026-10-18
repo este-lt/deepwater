@@ -190,6 +190,15 @@ export type QuotaRow = {
   maj_le: string;
 }
 
+export type AlerteRow = {
+  id: number;
+  nom_tache: string;
+  motif: "retard" | "echecs";
+  message: string;
+  ouverte_le: string;
+  resolue_le: string | null;
+}
+
 export type CollecteRow = {
   id: string;
   source: string;
@@ -229,6 +238,7 @@ export type Database = {
       taches_planifiees: Table<TachePlanifieeRow>;
       quota_api: Table<QuotaRow>;
       collectes_planifiees: Table<CollecteRow>;
+      alertes: Table<AlerteRow>;
     };
     Views: { [_ in never]: never };
     Functions: {

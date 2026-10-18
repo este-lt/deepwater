@@ -1,16 +1,36 @@
 import { Carte, Pastille } from "@/components/carte";
-import type { CleFacteur, ForceDevise, Paire } from "@/lib/analyse";
+import { type CleFacteur, type ForceDevise, type LienIntermarche, type Moteur, type Paire } from "@/lib/analyse";
 import { formaterDateSeance, formaterPb, formaterPct } from "@/lib/format";
 import { type Langue, traducteur } from "@/lib/i18n";
 
-// Cinq facteurs fondamentaux (aucune analyse technique) : une étoile par facteur aligné.
+// Six facteurs (aucune analyse technique) : une étoile par facteur aligné.
 export const FACTEURS: Record<CleFacteur, { fr: string; en: string; court: string; courtEn: string }> = {
   portage: { fr: "Portage (taux directeur face aux autres)", en: "Carry (policy rate vs the others)", court: "P", courtEn: "C" },
   tauxReel: { fr: "Taux réel (taux directeur moins inflation)", en: "Real rate (policy rate minus inflation)", court: "R", courtEn: "R" },
   orientation: { fr: "Orientation de la banque centrale", en: "Central bank stance", court: "O", courtEn: "S" },
   macro: { fr: "Croissance et emploi", en: "Growth and jobs", court: "C", courtEn: "G" },
   regime: { fr: "Sentiment risk-on / risk-off", en: "Risk-on / risk-off sentiment", court: "S", courtEn: "M" },
+  intermarche: { fr: "Corrélations inter-marchés (pétrole, or, S&P 500, yuan, devises moteurs)", en: "Intermarket correlations (oil, gold, S&P 500, yuan, driver currencies)", court: "I", courtEn: "I" },
 };
+
+const NOMS_MOTEURS: Record<Moteur, [string, string]> = {
+  petrole: ["Pétrole", "Oil"], or: ["Or", "Gold"], sp500: ["S&P 500", "S&P 500"], yuan: ["Yuan", "Yuan"],
+  USD: ["USD", "USD"], EUR: ["EUR", "EUR"], AUD: ["AUD", "AUD"],
+};
+const DEVISE_MOTEUR = new Set<Moteur>(["USD", "EUR", "AUD"]);
+
+// « Pétrole +8,2 % ↗ » : valeur du moteur (variation sur 20 séances, ou score de la devise
+// moteur) et effet sur la devise selon la fiche de corrélations.
+function texteLien(l: LienIntermarche, langue: Langue): string {
+  const nom = NOMS_MOTEURS[l.moteur][langue === "en" ? 1 : 0];
+  const valeur = l.valeur === null
+    ? "—"
+    : DEVISE_MOTEUR.has(l.moteur)
+    ? `${l.valeur > 0 ? "+" : l.valeur < 0 ? "−" : ""}${Math.round(Math.abs(l.valeur) * 100)}`
+    : formaterPct(l.valeur, 1, true, langue);
+  const effet = l.note === null ? "" : l.note >= 0.15 ? " ↗" : l.note <= -0.15 ? " ↘" : " →";
+  return `${nom} ${valeur}${effet}`;
+}
 
 const ordre = Object.keys(FACTEURS) as CleFacteur[];
 
@@ -48,8 +68,8 @@ export function SectionDevises({ forces, paires, langue }: { forces: ForceDevise
       pied={
         <p className="text-xs text-discret">
           {t(
-            "Scoring automatique par règles, aucune analyse technique (pondérations : portage 20 %, taux réel 20 %, orientation 25 %, croissance et emploi 15 %, sentiment 20 %), pas un conseil en investissement. Étoiles : nombre de facteurs qui donnent le même sens à la paire (5 étoiles : tous).",
-            "Automatic rules-based score, no technical analysis (weights: carry 20%, real rate 20%, stance 25%, growth and jobs 15%, sentiment 20%), not investment advice. Stars: number of factors pointing the same way for the pair (5 stars: all).",
+            "Scoring automatique par règles, aucune analyse technique (pondérations : portage 15 %, taux réel 15 %, orientation 20 %, croissance et emploi 15 %, sentiment 15 %, corrélations inter-marchés 20 %), pas un conseil en investissement. Corrélations (fiche Aupa Traders) : pétrole → CAD, or → CHF et JPY, S&P 500 → AUD, NZD (et CHF à l'inverse), yuan → AUD, dollar → EUR, JPY, AUD, NZD (à l'inverse) et CAD, euro → GBP, AUD → NZD ; actifs sur 20 séances, devises moteurs par leur score fondamental. Étoiles : nombre de facteurs qui donnent le même sens à la paire (6 étoiles : tous).",
+            "Automatic rules-based score, no technical analysis (weights: carry 15%, real rate 15%, stance 20%, growth and jobs 15%, sentiment 15%, intermarket correlations 20%), not investment advice. Correlations (Aupa Traders sheet): oil → CAD, gold → CHF and JPY, S&P 500 → AUD, NZD (and CHF inversely), yuan → AUD, dollar → EUR, JPY, AUD, NZD (inversely) and CAD, euro → GBP, AUD → NZD; assets over 20 sessions, driver currencies by their fundamental score. Stars: number of factors pointing the same way for the pair (6 stars: all).",
           )}
         </p>
       }
@@ -82,6 +102,10 @@ export function SectionDevises({ forces, paires, langue }: { forces: ForceDevise
                       {t("réel", "real")} {f.tauxReel === null ? "—" : formaterPct(f.tauxReel, 1, true, langue)}
                       {f.dernierMouvement && ` · ${formaterPb(f.dernierMouvement.ecartPb, langue)} ${t("le", "on")} ${formaterDateSeance(f.dernierMouvement.date, langue)}`}
                     </span>
+                    <span className="chiffres basis-full">
+                      {t("Corrélations :", "Correlations:")}{" "}
+                      {f.liens.length ? f.liens.map((l) => texteLien(l, langue)).join(" · ") : t("aucun moteur dans la fiche", "no driver in the sheet")}
+                    </span>
                   </span>
                   <span />
                 </li>
@@ -99,8 +123,8 @@ export function SectionDevises({ forces, paires, langue }: { forces: ForceDevise
                     <Pastille ton={p.sens === "achat" ? "hausse" : "baisse"}>{p.sens === "achat" ? t("Biais acheteur", "Long bias") : t("Biais vendeur", "Short bias")}</Pastille>
                   </span>
                   <span className="flex items-center justify-between gap-2 text-xs">
-                    <span aria-label={`${p.etoiles} / 5`} className="tracking-widest text-alerte">
-                      {"★".repeat(p.etoiles)}<span className="text-surface-3">{"★".repeat(5 - p.etoiles)}</span>
+                    <span aria-label={`${p.etoiles} / ${ordre.length}`} className="tracking-widest text-alerte">
+                      {"★".repeat(p.etoiles)}<span className="text-surface-3">{"★".repeat(ordre.length - p.etoiles)}</span>
                     </span>
                     <span className="chiffres text-discret">{t("écart", "spread")} {Math.round(p.ecart * 100)}</span>
                   </span>

@@ -112,7 +112,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
     {
       id: "banques",
       contenu: (
-        <Repliable titre={t("Banques centrales et macro mondiale", "Central banks and global macro")} resume={t("Taux directeurs, orientation, inflation, chômage, PIB", "Policy rates, stance, inflation, jobs, GDP")}>
+        <Repliable titre={t("Banques centrales", "Central banks")} resume={t("Taux directeurs, orientation, décisions passées et à venir", "Policy rates, stance, past and upcoming decisions")}>
           <SectionBanques monde={monde} forces={analyses.forces} calendrier={calendrier} langue={langue} />
         </Repliable>
       ),
@@ -129,8 +129,8 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
     {
       id: "macro",
       contenu: (
-        <Repliable titre={t("Macroéconomie américaine", "US macro")} resume={t("Inflation, emploi, consommation, croissance", "Inflation, jobs, consumption, growth")}>
-          <SectionMacro indicateurs={macro} langue={langue} />
+        <Repliable titre={t("Macroéconomie (8 grandes économies)", "Macro (8 major economies)")} resume={t("États-Unis en détail, puis EUR, GBP, CAD, JPY, CHF, AUD, NZD", "United States in detail, then EUR, GBP, CAD, JPY, CHF, AUD, NZD")}>
+          <SectionMacro indicateurs={macro} monde={monde} langue={langue} />
         </Repliable>
       ),
     },

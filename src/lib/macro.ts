@@ -38,7 +38,9 @@ export async function lireTaux(supabase: ClientSupabase): Promise<EtatTaux> {
   }
 
   const parMaturite = new Map<string, TauxRow[]>();
-  for (const l of lignes) parMaturite.set(l.maturite, [...(parMaturite.get(l.maturite) ?? []), l]);
+  for (const l of lignes) {
+    if (Number.isFinite(Number(l.taux))) parMaturite.set(l.maturite, [...(parMaturite.get(l.maturite) ?? []), l]);
+  }
   const date10 = parMaturite.get("10year")?.at(-1)?.date ?? lignes.at(-1)!.date;
 
   const points = MATURITES.flatMap((m) => {
@@ -145,7 +147,10 @@ export async function lireMacro(supabase: ClientSupabase, langue: Langue): Promi
     .order("date", { ascending: true });
   if (error) throw new Error(`Lecture des indicateurs macro impossible : ${error.message}`);
   const series = new Map<string, { date: string; valeur: number; maj_le: string }[]>();
-  for (const l of data ?? []) series.set(l.indicateur, [...(series.get(l.indicateur) ?? []), { ...l, valeur: Number(l.valeur) }]);
+  for (const l of data ?? []) {
+    const valeur = Number(l.valeur);
+    if (Number.isFinite(valeur)) series.set(l.indicateur, [...(series.get(l.indicateur) ?? []), { ...l, valeur }]);
+  }
 
   return MACRO.map((def) => {
     const serie = series.get(def.cle) ?? [];

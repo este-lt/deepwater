@@ -178,13 +178,18 @@ variation de cours, ni niveau graphique) : uniquement des données concrètes.
   Nasdaq-100, 10 ans, VIX, EUR, JPY, AUD, or, WTI, bitcoin). **Couverture** : actif détenable
   le plus négativement corrélé au S&P 500 sur 60 séances (or, yen, franc suisse, obligations),
   proposé seulement sous −0,2.
-- **Force des 8 devises** (cinq facteurs fondamentaux) : portage, taux directeur face à la
-  moyenne des 8 (20 %) ; taux réel, taux directeur moins inflation (20 %) ; orientation de la
-  banque centrale (25 %) ; croissance et emploi, PIB et évolution du chômage (15 %) ;
-  sentiment risk-on/risk-off (20 %, devises de risque AUD, NZD, CAD contre refuges JPY,
-  CHF, USD).
-- **Paires** : devise forte contre devise faible ; étoiles = nombre des cinq facteurs qui
-  vont dans le même sens (5 étoiles : tous).
+- **Force des 8 devises** (six facteurs) : portage, taux directeur face à la moyenne des 8
+  (15 %) ; taux réel, taux directeur moins inflation (15 %) ; orientation de la banque
+  centrale (20 %) ; croissance et emploi, PIB et évolution du chômage (15 %) ; sentiment
+  risk-on/risk-off (15 %, devises de risque AUD, NZD, CAD contre refuges JPY, CHF, USD) ;
+  corrélations inter-marchés (20 %, fiche « Value Asset Corrélations » d'Aupa Traders) :
+  pétrole → CAD, or → CHF et JPY, S&P 500 → AUD et NZD (CHF à l'inverse), yuan → AUD,
+  dollar → CAD (même sens) et EUR, JPY, AUD, NZD (sens inverse), euro → GBP, AUD → NZD.
+  Actifs moteurs mesurés par leur variation sur 20 séances (pétrole ±10 %, or et S&P 500
+  ±5 %, yuan ±1,5 % = note pleine) ; devises moteurs par leur score fondamental, jamais par
+  leur cours. Le dollar n'a pas de moteur dans la fiche : facteur indisponible pour l'USD.
+- **Paires** : devise forte contre devise faible ; étoiles = nombre des six facteurs qui
+  vont dans le même sens (6 étoiles : tous).
 - **Rapports** quotidien et hebdomadaire (`/rapport`) : synthèse rédigée par règles, banques
   centrales, agenda, plus forts mouvements, fil instantané ; dans la langue de l'utilisateur.
 
@@ -214,17 +219,23 @@ Sur iPhone : Safari, Partager, « Sur l'écran d'accueil » ouvre Deepwater en p
 Scoring automatique basé sur des règles, pas une prédiction garantie ni un conseil en
 investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
-| Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
-|---|---|---|
-Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026).
+Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026, version b).
 
 | Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
 |---|---|---|
-| Politique de la Fed | ce que le marché anticipe (taux à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 25 % / 25 % |
-| Taux longs | moitié variation sur 5 séances (taux à 10 ans 60 %, taux réel à 10 ans 40 %), moitié niveau du taux réel à 10 ans face à un repère neutre fixe de 1,5 % (1 pt au-dessus = note −1) | 20 % / 25 % |
-| Surprise macro | publications des 45 derniers jours comparées aux précédentes | 20 % / 15 % |
-| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 20 % / 20 % |
-| Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 15 % / 15 % |
+| Politique de la Fed | ce que le marché anticipe (taux à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 20 % / 20 % |
+| Taux longs | moitié variation sur 5 séances (taux à 10 ans 60 %, taux réel à 10 ans 40 %), moitié niveau du taux réel à 10 ans face à un repère neutre fixe de 1,5 % (1 pt au-dessus = note −1) | 15 % / 20 % |
+| Surprise macro | publications des 45 derniers jours comparées aux précédentes | 15 % / 10 % |
+| Régime macroéconomique | croissance (emplois créés sur 3 mois face à 100 k par mois, chômage sur 3 mois, PIB annualisé face à 2 %) et inflation (PCE sous-jacent face à la cible de 2 % de la Fed, accélération du CPI sur 3 mois, pétrole sur 3 mois) ; expansion, reflation, déflation ou stagflation ; note = 0,6 × croissance − 0,4 × inflation | 15 % / 15 % |
+| Dollar (DXY) | indice large du dollar sur 20 séances ; fiche de corrélations : dollar qui monte = baissier (+2 % = note −1) | 10 % / 10 % |
+| Courbe des taux | 10 ans − 2 ans et 10 ans − 3 mois ; inversion = baissier (−0,5 pt = note −1), pente normale plafonnée à +0,5 | 5 % / 5 % |
+| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 10 % / 10 % |
+| Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 10 % / 10 % |
+
+Concepts sans donnée gratuite en base, donc absents du calcul : Bunds, masse monétaire M2 et
+liquidité mondiale, ISM, PMI, salaire horaire moyen, bilan de la Fed (QE/QT), projections du
+FOMC, contrats à terme sur taux courts, consensus publié, COT, positionnement et sentiment des
+particuliers, ratios de valorisation (CAPE, Market Cap / M2), rotations sectorielles.
 
 Note de −1 à +1 par facteur, moyenne pondérée, haussier ≥ +0,2, baissier ≤ −0,2.
 Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais avec moins de

@@ -16,6 +16,9 @@ const SOURCES: Record<string, [string, string]> = {
   "FRED (DGS2, DFF), BRI": ["FRED (taux à 2 ans, Fed funds), BRI", "FRED (2-year yield, Fed funds), BIS"],
   "FRED (DGS10, DFII10)": ["FRED (taux nominal et réel à 10 ans)", "FRED (10-year nominal and real yields)"],
   "FRED (NFCI, Fed de Chicago)": ["FRED (NFCI, Fed de Chicago)", "FRED (NFCI, Chicago Fed)"],
+  "FRED (DTWEXBGS)": ["FRED (indice large du dollar)", "FRED (broad dollar index)"],
+  "FRED (DGS3MO, DGS2, DGS10)": ["FRED (taux à 3 mois, 2 ans et 10 ans)", "FRED (3-month, 2-year and 10-year yields)"],
+  "FRED (BLS, BEA, EIA)": ["FRED (emploi, PIB, prix, pétrole)", "FRED (jobs, GDP, prices, oil)"],
   "FRED (VIX, spread haut rendement ICE BofA)": ["FRED (VIX, spread haut rendement ICE BofA)", "FRED (VIX, ICE BofA high-yield spread)"],
   "FRED (VXN, spread haut rendement ICE BofA)": ["FRED (VXN, spread haut rendement ICE BofA)", "FRED (VXN, ICE BofA high-yield spread)"],
 };

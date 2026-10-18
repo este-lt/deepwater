@@ -159,29 +159,70 @@ export interface Point {
   valeur: number;
 }
 
+// Actifs moteurs des corrélations inter-marchés : variation en % sur 20 séances
+// (yuan : force du yuan, soit l'inverse de la variation de l'USD/CNY).
+export type ActifMoteur = "petrole" | "or" | "sp500" | "yuan";
+export type Moteur = ActifMoteur | "USD" | "EUR" | "AUD";
+
 export interface EntreeDevises {
   decisions: Partial<Record<Devise, Point[]>>; // changements de taux directeur, dans l'ordre
   inflation: Partial<Record<Devise, Point[]>>;
   chomage: Partial<Record<Devise, Point[]>>;
   pib: Partial<Record<Devise, Point[]>>;
   regime: number | null;
+  moteurs?: Partial<Record<ActifMoteur, number | null>>;
   aujourdhui: string;
 }
 
-// Cinq facteurs fondamentaux, cinq étoiles possibles pour une paire.
-export type CleFacteur = "portage" | "tauxReel" | "orientation" | "macro" | "regime";
-export const POIDS_DEVISES: Record<CleFacteur, number> = { portage: 0.2, tauxReel: 0.2, orientation: 0.25, macro: 0.15, regime: 0.2 };
+// Six facteurs, six étoiles possibles pour une paire.
+export type CleFacteur = "portage" | "tauxReel" | "orientation" | "macro" | "regime" | "intermarche";
+export const POIDS_DEVISES: Record<CleFacteur, number> = {
+  portage: 0.15, tauxReel: 0.15, orientation: 0.2, macro: 0.15, regime: 0.15, intermarche: 0.2,
+};
 // Sensibilité au régime : devises de risque (AUD, NZD, CAD) contre valeurs refuges (JPY, CHF, USD).
 const SENSIBILITE: Record<Devise, number> = { AUD: 1, NZD: 1, CAD: 0.6, GBP: 0.3, EUR: 0, USD: -0.6, CHF: -0.8, JPY: -1 };
+
+// Corrélations inter-marchés (fiche « Value Asset Corrélations », Aupa Traders) : quand le
+// moteur monte, la devise suit (sens +1) ou baisse (sens -1). Pour une devise moteur, on lit
+// son score fondamental (jamais son cours) ; pour un actif, sa variation sur 20 séances.
+// Le dollar n'a pas de moteur dans la fiche : son facteur inter-marchés reste indisponible.
+export const CORRELATIONS: Record<Devise, { moteur: Moteur; sens: 1 | -1 }[]> = {
+  USD: [],
+  EUR: [{ moteur: "USD", sens: -1 }],
+  GBP: [{ moteur: "EUR", sens: 1 }],
+  CAD: [{ moteur: "petrole", sens: 1 }, { moteur: "USD", sens: 1 }],
+  CHF: [{ moteur: "or", sens: 1 }, { moteur: "sp500", sens: -1 }],
+  JPY: [{ moteur: "USD", sens: -1 }, { moteur: "or", sens: 1 }],
+  AUD: [{ moteur: "yuan", sens: 1 }, { moteur: "USD", sens: -1 }, { moteur: "sp500", sens: 1 }],
+  NZD: [{ moteur: "AUD", sens: 1 }, { moteur: "USD", sens: -1 }, { moteur: "sp500", sens: 1 }],
+};
+// Variation sur 20 séances qui donne une note pleine (±1), en %.
+const PLEIN_MOTEUR: Record<ActifMoteur, number> = { petrole: 10, or: 5, sp500: 5, yuan: 1.5 };
+const ACTIFS_MOTEURS = Object.keys(PLEIN_MOTEUR) as ActifMoteur[];
+
+export interface LienIntermarche {
+  moteur: Moteur;
+  sens: 1 | -1;
+  valeur: number | null; // variation en % (actif) ou score de la devise moteur
+  note: number | null; // contribution signée, entre -1 et +1
+}
 
 export interface ForceDevise {
   devise: Devise;
   score: number | null;
   facteurs: Record<CleFacteur, number | null>;
+  liens: LienIntermarche[];
   tauxDirecteur: number | null;
   tauxReel: number | null;
   dernierMouvement: { date: string; ecartPb: number } | null;
   orientation: "restrictive" | "accommodante" | "neutre";
+}
+
+function scorePondere(facteurs: Partial<Record<CleFacteur, number | null>>): number | null {
+  const valides = (Object.keys(facteurs) as CleFacteur[]).filter((k) => facteurs[k] !== null && facteurs[k] !== undefined);
+  const poids = valides.reduce((a, k) => a + POIDS_DEVISES[k], 0);
+  const total = (Object.keys(facteurs) as CleFacteur[]).reduce((a, k) => a + POIDS_DEVISES[k], 0);
+  return poids >= 0.5 * total ? valides.reduce((a, k) => a + facteurs[k]! * POIDS_DEVISES[k], 0) / poids : null;
 }
 
 const derniere = (p?: Point[]) => (p && p.length ? p[p.length - 1] : null);
@@ -197,7 +238,8 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
   const mReels = moyenne(DEVISES.flatMap((d) => (reels[d] === null ? [] : [reels[d]!])));
   const mPib = moyenne(DEVISES.flatMap((d) => (derniere(e.pib[d]) ? [derniere(e.pib[d])!.valeur] : [])));
 
-  return DEVISES.map((d): ForceDevise => {
+  // 1er passage : les cinq facteurs fondamentaux de chaque devise.
+  const bases = DEVISES.map((d) => {
     // Portage : taux directeur face à la moyenne des 8 ; taux réel : taux directeur moins inflation.
     const portage = taux[d] === null ? null : borner((taux[d]! - mTaux) / 2);
     const tauxReel = reels[d] === null ? null : borner((reels[d]! - mReels) / 2);
@@ -232,19 +274,36 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
 
     const regime = e.regime === null ? null : borner(e.regime * SENSIBILITE[d]);
 
-    const facteurs = { portage, tauxReel, orientation, macro, regime };
-    const valides = (Object.keys(facteurs) as CleFacteur[]).filter((k) => facteurs[k] !== null);
-    const poids = valides.reduce((a, k) => a + POIDS_DEVISES[k], 0);
-    const score = poids >= 0.5 ? valides.reduce((a, k) => a + facteurs[k]! * POIDS_DEVISES[k], 0) / poids : null;
+    const fondamentaux = { portage, tauxReel, orientation, macro, regime };
+    return { devise: d, fondamentaux, scoreBase: scorePondere(fondamentaux), dernierMouvement, orientationNote: orientation };
+  });
+  const scoreBase = new Map(bases.map((b) => [b.devise as Moteur, b.scoreBase]));
+  const actifs = new Map(ACTIFS_MOTEURS.map((a) => {
+    const v = e.moteurs?.[a];
+    return [a as Moteur, v === null || v === undefined || !Number.isFinite(v) ? null : v];
+  }));
 
+  // 2e passage : corrélations inter-marchés (dépendent du score fondamental des devises moteurs).
+  return bases.map((b): ForceDevise => {
+    const liens = CORRELATIONS[b.devise].map((c): LienIntermarche => {
+      const actif = actifs.has(c.moteur);
+      const valeur = actif ? actifs.get(c.moteur)! : scoreBase.get(c.moteur) ?? null;
+      const brute = valeur === null ? null : actif ? borner(valeur / PLEIN_MOTEUR[c.moteur as ActifMoteur]) : valeur;
+      return { moteur: c.moteur, sens: c.sens, valeur, note: brute === null ? null : c.sens * brute };
+    });
+    const notes = liens.flatMap((l) => (l.note === null ? [] : [l.note]));
+    const intermarche = notes.length ? borner(moyenne(notes)) : null;
+    const facteurs = { ...b.fondamentaux, intermarche };
+    const o = b.orientationNote;
     return {
-      devise: d,
-      score,
+      devise: b.devise,
+      score: scorePondere(facteurs),
       facteurs,
-      tauxDirecteur: taux[d],
-      tauxReel: reels[d],
-      dernierMouvement,
-      orientation: orientation === null ? "neutre" : orientation >= 0.3 ? "restrictive" : orientation <= -0.3 ? "accommodante" : "neutre",
+      liens,
+      tauxDirecteur: taux[b.devise],
+      tauxReel: reels[b.devise],
+      dernierMouvement: b.dernierMouvement,
+      orientation: o === null ? "neutre" : o >= 0.3 ? "restrictive" : o <= -0.3 ? "accommodante" : "neutre",
     };
   }).sort((a, b) => (b.score ?? -9) - (a.score ?? -9));
 }
@@ -256,7 +315,7 @@ export interface Paire {
   paire: string; // "EUR/JPY"
   sens: "achat" | "vente";
   ecart: number;
-  etoiles: number; // 1 à 5
+  etoiles: number; // 1 à 6 : facteurs qui vont dans le même sens
   facteursAlignes: CleFacteur[];
 }
 
@@ -278,7 +337,7 @@ export function classerPaires(forces: ForceDevise[], max = 8): Paire[] {
         paire: `${base.devise}/${cote.devise}`,
         sens: ecart >= 0 ? "achat" : "vente",
         ecart: Math.abs(ecart),
-        etoiles: Math.max(1, Math.min(5, alignes.length)),
+        etoiles: Math.max(1, Math.min(6, alignes.length)),
         facteursAlignes: alignes,
       });
     }
