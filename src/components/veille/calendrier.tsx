@@ -90,7 +90,7 @@ function Mondial({ calendrier }: { calendrier: EtatCalendrier }) {
               <h4 className="sticky top-0 z-[1] bg-surface pb-1 text-xs font-medium capitalize text-discret">{jour}</h4>
               <table className="w-full text-sm">
                 <thead className="sr-only">
-                  <tr><th>{t("Heure", "Time")}</th><th>{t("Devise", "Currency")}</th><th>{t("Événement", "Event")}</th><th>{t("Prévision", "Forecast")}</th><th>{t("Précédent", "Previous")}</th></tr>
+                  <tr><th>{t("Heure", "Time")}</th><th>{t("Devise", "Currency")}</th><th>{t("Événement", "Event")}</th><th>{t("Prévision et précédent", "Forecast and previous")}</th></tr>
                 </thead>
                 <tbody>
                   {evenements.map((e) => {

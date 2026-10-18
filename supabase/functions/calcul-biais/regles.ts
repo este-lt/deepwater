@@ -1,7 +1,7 @@
 // Règles du biais quotidien : fichier de configuration modifiable.
 // Uniquement des données fondamentales et de marché concrètes (politique de la Fed, taux,
 // statistiques publiées, volatilité implicite, crédit, conditions financières) : aucun
-// indicateur ni concept d'analyse technique (ni moyenne mobile, ni momentum, ni niveau).
+// indicateur ni concept d'analyse technique (ni moyenne mobile, ni momentum, ni niveau de prix).
 // Chaque facteur donne une note entre -1 (baissier) et +1 (haussier). Le score final
 // est la moyenne pondérée des facteurs disponibles ; un facteur sans donnée récente
 // est marqué « indisponible » et son poids est retiré du calcul (jamais de valeur inventée).
@@ -10,7 +10,7 @@
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
 export const REGLES_BIAIS = {
-  version: "2026-10-17c",
+  version: "2026-10-19",
 
   // Conversion du score (entre -1 et +1) en biais.
   seuils: { haussier: 0.2, baissier: -0.2 },
@@ -43,15 +43,19 @@ export const REGLES_BIAIS = {
     ageMaxJours: 7,
   },
 
-  // Taux longs : une hausse rapide du coût de l'argent pèse sur les actions. Taux nominal
-  // à 10 ans et taux réel à 10 ans (obligations indexées sur l'inflation).
+  // Taux longs : le coût de l'argent pèse sur les actions, par son évolution récente (taux
+  // nominal et taux réel à 10 ans sur 5 séances) et par son niveau (taux réel à 10 ans,
+  // obligations indexées sur l'inflation, face à un repère neutre fixe).
   taux: {
     maturite: "10year",
     libelle: "Taux à 10 ans",
     libelle_en: "10-year yield",
     seancesVariation: 5,
     variationPleinePts: 0.2, // +0,20 pt en 5 séances -> note -1
-    partNominal: 0.6,
+    partNominal: 0.6, // dans la note de variation
+    reelNeutre: 1.5, // taux réel à 10 ans jugé neutre (%)
+    ecartPleinNiveauPts: 1, // taux réel 1 pt au-dessus du repère -> note de niveau -1
+    partNiveau: 0.5, // part du niveau dans la note du facteur (le reste : la variation)
     ageMaxJours: 7,
   },
 

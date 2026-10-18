@@ -80,7 +80,7 @@ export function SectionDevises({ forces, paires, langue }: { forces: ForceDevise
                       {t("taux", "rate")} {f.tauxDirecteur === null ? "—" : formaterPct(f.tauxDirecteur, 2, false, langue)}
                       {" · "}
                       {t("réel", "real")} {f.tauxReel === null ? "—" : formaterPct(f.tauxReel, 1, true, langue)}
-                      {f.dernierMouvement && ` · ${formaterPb(f.dernierMouvement.ecartPb, langue)} ${t("le", "on")} ${formaterDateSeance(f.dernierMouvement.date, langue, false)}`}
+                      {f.dernierMouvement && ` · ${formaterPb(f.dernierMouvement.ecartPb, langue)} ${t("le", "on")} ${formaterDateSeance(f.dernierMouvement.date, langue)}`}
                     </span>
                   </span>
                   <span />

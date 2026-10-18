@@ -58,6 +58,8 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
   ]);
   const analyses = await lireAnalyses(supabase, monde);
   const indices = marches.filter((l) => l.prioritaire);
+  // Séance la plus récente des indices : signale une carte en retard (FRED publie le Nasdaq-100 plus tard).
+  const derniereSeance = indices.reduce((max, l) => (l.date > max ? l.date : max), "");
   const instruments = marches.map((l) => ({ symbole: l.symbole, nom: nomInstrument(l, langue), classe: l.classe }));
   const demande = (await searchParams).instrument;
   const initial = instruments.find((i) => i.symbole === demande)?.symbole;
@@ -76,7 +78,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
       id: "indices",
       contenu: (
         <section aria-label={t("Indices prioritaires", "Key indices")} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {indices.map((l, i) => <CarteInstrument key={l.symbole} ligne={l} langue={langue} delai={i * 60} />)}
+          {indices.map((l, i) => <CarteInstrument key={l.symbole} ligne={l} langue={langue} derniereSeance={derniereSeance} delai={i * 60} />)}
         </section>
       ),
     },

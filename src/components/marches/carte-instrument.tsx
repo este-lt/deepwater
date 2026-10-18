@@ -5,10 +5,12 @@ import { type LigneMarche, nomInstrument } from "@/lib/marches";
 import { libelleSource } from "@/lib/sources";
 import { MiniCourbe } from "./mini-courbe";
 
-// Carte d'un indice prioritaire (S&P 500, Nasdaq-100).
-export function CarteInstrument({ ligne, langue, delai = 0 }: { ligne: LigneMarche; langue: Langue; delai?: number }) {
+// Carte d'un indice prioritaire (S&P 500, Nasdaq-100). `derniereSeance` : séance la plus
+// récente parmi les indices, pour signaler une variation qui porte sur un autre jour.
+export function CarteInstrument({ ligne, langue, derniereSeance, delai = 0 }: { ligne: LigneMarche; langue: Langue; derniereSeance?: string; delai?: number }) {
   const t = traducteur(langue);
   const ton = tonVariation(ligne.var1j);
+  const enRetard = derniereSeance !== undefined && ligne.date < derniereSeance;
   return (
     <article
       style={{ animationDelay: `${delai}ms` }}
@@ -33,6 +35,14 @@ export function CarteInstrument({ ligne, langue, delai = 0 }: { ligne: LigneMarc
           {formaterPct(ligne.var1m, 1, true, langue)} / {t("1 mois", "1 mo")} · {formaterPct(ligne.varAnnee, 1, true, langue)} {t("depuis janv.", "YTD")}
         </span>
       </div>
+      {enRetard && (
+        <p className="text-xs text-alerte">
+          {t(
+            `Variation de la séance du ${formaterDateSeance(ligne.date, langue)} : FRED n'a pas encore publié celle du ${formaterDateSeance(derniereSeance, langue)}.`,
+            `Change for the ${formaterDateSeance(ligne.date, langue)} session: FRED has not yet published ${formaterDateSeance(derniereSeance, langue)}.`,
+          )}
+        </p>
+      )}
       <Horodatage iso={ligne.majLe} source={libelleSource(ligne.source, langue)} seuilHeures={30} />
     </article>
   );

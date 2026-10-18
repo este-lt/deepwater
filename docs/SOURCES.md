@@ -216,12 +216,12 @@ investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
 | Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
 |---|---|---|
-Uniquement des données concrètes, aucune analyse technique (règles du 17/10/2026).
+Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026).
 
 | Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
 |---|---|---|
 | Politique de la Fed | ce que le marché anticipe (taux à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 25 % / 25 % |
-| Taux longs | variation sur 5 séances du taux à 10 ans (60 %) et du taux réel à 10 ans (40 %) | 20 % / 25 % |
+| Taux longs | moitié variation sur 5 séances (taux à 10 ans 60 %, taux réel à 10 ans 40 %), moitié niveau du taux réel à 10 ans face à un repère neutre fixe de 1,5 % (1 pt au-dessus = note −1) | 20 % / 25 % |
 | Surprise macro | publications des 45 derniers jours comparées aux précédentes | 20 % / 15 % |
 | Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 20 % / 20 % |
 | Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 15 % / 15 % |

@@ -146,7 +146,8 @@ export function facteurFed(indice: CleIndice, deuxAns: PointTaux[], fedFunds: Po
 }
 
 // Taux longs : variation sur 5 séances du taux nominal à 10 ans et du taux réel à 10 ans
-// (obligations indexées sur l'inflation). Une hausse du coût de l'argent est baissière.
+// (obligations indexées sur l'inflation), et niveau du taux réel face au repère neutre.
+// Un argent qui renchérit, ou déjà cher, est baissier.
 export function facteurTaux(indice: CleIndice, nominal: PointTaux[], reel: PointTaux[], aujourdhui: string, source: string): Facteur {
   const r = REGLES_BIAIS.taux;
   const poids = REGLES_BIAIS.indices[indice].poids.taux;
@@ -166,7 +167,11 @@ export function facteurTaux(indice: CleIndice, nominal: PointTaux[], reel: Point
     ...(nom ? [{ note: -borner(nom.variation / r.variationPleinePts), part: r.partNominal }] : []),
     ...(re ? [{ note: -borner(re.variation / r.variationPleinePts), part: 1 - r.partNominal }] : []),
   ];
-  const note = notes.reduce((s, x) => s + x.note * x.part, 0) / notes.reduce((s, x) => s + x.part, 0);
+  const noteVariation = notes.reduce((s, x) => s + x.note * x.part, 0) / notes.reduce((s, x) => s + x.part, 0);
+  const ecartNiveau = re ? re.dernier.taux - r.reelNeutre : null;
+  const note = ecartNiveau === null
+    ? noteVariation
+    : (1 - r.partNiveau) * noteVariation + r.partNiveau * -borner(ecartNiveau / r.ecartPleinNiveauPts);
   const texte = (l: L) => {
     const parties: string[] = [];
     if (nom) {
@@ -174,10 +179,13 @@ export function facteurTaux(indice: CleIndice, nominal: PointTaux[], reel: Point
         ? `${r.libelle} : ${pc(nom.dernier.taux, 2, l)} le ${dateCourte(nom.dernier.date)}, ${signe(nom.variation)}${nf(Math.abs(nom.variation), 2)} pt en ${r.seancesVariation} séances`
         : `${r.libelle_en}: ${pc(nom.dernier.taux, 2, l)} on ${dateCourte(nom.dernier.date, l)}, ${signe(nom.variation)}${nf(Math.abs(nom.variation), 2, l)} pt over ${r.seancesVariation} sessions`);
     }
-    if (re) {
+    if (re && ecartNiveau !== null) {
+      const position = l === "fr"
+        ? `${nf(Math.abs(ecartNiveau), 2)} pt ${ecartNiveau >= 0 ? "au-dessus" : "au-dessous"} du repère neutre de ${pc(r.reelNeutre, 1, l)}`
+        : `${nf(Math.abs(ecartNiveau), 2, l)} pt ${ecartNiveau >= 0 ? "above" : "below"} the ${pc(r.reelNeutre, 1, l)} neutral benchmark`;
       parties.push(l === "fr"
-        ? `taux réel à 10 ans ${pc(re.dernier.taux, 2, l)} (${signe(re.variation)}${nf(Math.abs(re.variation), 2)} pt)`
-        : `10-year real yield ${pc(re.dernier.taux, 2, l)} (${signe(re.variation)}${nf(Math.abs(re.variation), 2, l)} pt)`);
+        ? `taux réel à 10 ans ${pc(re.dernier.taux, 2, l)} (${signe(re.variation)}${nf(Math.abs(re.variation), 2)} pt), ${position}`
+        : `10-year real yield ${pc(re.dernier.taux, 2, l)} (${signe(re.variation)}${nf(Math.abs(re.variation), 2, l)} pt), ${position}`);
     }
     return `${parties.join(l === "fr" ? " ; " : "; ")}.`;
   };

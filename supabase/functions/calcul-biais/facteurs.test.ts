@@ -42,19 +42,25 @@ Deno.test("Fed : hausses anticipées par le taux à 2 ans et hausse décidée = 
   egal("sans données", facteurFed("SPX", [], [], [], "2026-10-16").statut, "indisponible");
 });
 
-Deno.test("taux : une hausse rapide du nominal et du réel est baissière, une baisse haussière", () => {
-  const serie = (fin: number): PointTaux[] =>
+Deno.test("taux : moitié variation sur 5 séances, moitié niveau du taux réel face au repère de 1,5 %", () => {
+  // 25 séances stables puis 5 séances de `debut` à `fin`.
+  const serie = (debut: number, fin: number): PointTaux[] =>
     Array.from({ length: 30 }, (_, i) => ({
       date: new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10),
-      taux: i < 25 ? 4 : 4 + ((fin - 4) * (i - 24)) / 5,
+      taux: i < 25 ? debut : debut + ((fin - debut) * (i - 24)) / 5,
     }));
-  const hausse = facteurTaux("SPX", serie(4.2), serie(4.2), "2026-10-01", "fred");
-  const baisse = facteurTaux("SPX", serie(3.8), serie(3.8), "2026-10-01", "fred");
-  egal("hausse", hausse.note, -1);
-  egal("baisse", baisse.note, 1);
-  // Sans taux réel : seul le nominal compte.
-  egal("nominal seul", facteurTaux("SPX", serie(4.2), [], "2026-10-01", "fred").note, -1);
-  if (!hausse.texte.includes("taux réel à 10 ans")) throw new Error(hausse.texte);
+  // Valeurs réelles du 15/10/2026 : 10 ans 5,28 -> 5,10 %, taux réel 2,92 -> 2,78 %.
+  // Variation : 0,6 x 0,9 + 0,4 x 0,7 = 0,82 ; niveau : 2,78 - 1,5 = 1,28 pt -> -1 ; 0,5 x 0,82 - 0,5 = -0,09.
+  const reel = facteurTaux("SPX", serie(5.28, 5.1), serie(2.92, 2.78), "2026-10-01", "fred");
+  egal("valeurs réelles", reel.note, -0.09);
+  if (!reel.texte.includes("1,28 pt au-dessus du repère neutre de 1,5 %")) throw new Error(reel.texte);
+  if (!reel.texte_en.includes("1.28 pt above the 1.5% neutral benchmark")) throw new Error(reel.texte_en);
+  // Hausse rapide, taux réel 0,2 pt au-dessus du repère : 0,5 x -1 + 0,5 x -0,2 = -0,6.
+  egal("hausse", facteurTaux("SPX", serie(4, 4.2), serie(1.5, 1.7), "2026-10-01", "fred").note, -0.6);
+  // Baisse rapide, taux réel bas (0,3 %) : haussier sur les deux plans.
+  egal("baisse", facteurTaux("SPX", serie(4, 3.8), serie(0.5, 0.3), "2026-10-01", "fred").note, 1);
+  // Sans taux réel : seule la variation du nominal compte.
+  egal("nominal seul", facteurTaux("SPX", serie(4, 4.2), [], "2026-10-01", "fred").note, -1);
 });
 
 Deno.test("macro : sens par indicateur et fenêtre de fraîcheur", () => {

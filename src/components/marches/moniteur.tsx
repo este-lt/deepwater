@@ -23,6 +23,15 @@ function variation(v: number | null, type: LigneMarche["variation"], langue: Lan
   return { texte, ton: v === 0 ? "text-attenue" : "text-texte" };
 }
 
+// Variation entre le premier et le dernier point de la mini-courbe (environ 3 mois).
+function surTroisMois(l: LigneMarche): number | null {
+  const premier = l.courbe[0];
+  const dernier = l.courbe.at(-1);
+  if (premier === undefined || dernier === undefined || l.courbe.length < 2) return null;
+  if (l.variation === "pct") return premier === 0 ? null : (dernier / premier - 1) * 100;
+  return l.variation === "pb" ? (dernier - premier) * 100 : dernier - premier;
+}
+
 function Variation({ v, type, className = "" }: { v: number | null; type: LigneMarche["variation"]; className?: string }) {
   const { langue } = useLangue();
   const { texte, ton } = variation(v, type, langue);
@@ -107,7 +116,7 @@ export function Moniteur({ lignes, classes }: { lignes: LigneMarche[]; classes: 
                   className="cursor-pointer rounded-lg transition-colors hover:bg-surface-2"
                 >
                   <td className="max-w-0 truncate py-2 pr-2">
-                    <span className="font-medium">{langue === "en" && l.nomEn ? l.nomEn : l.nom}</span>
+                    <span className="font-medium">{langue === "en" && l.nomEn ? l.nomEn : l.nom}</span>{" "}
                     <span className={`ml-1.5 text-[0.7rem] ${l.ancienne ? "text-alerte" : "text-discret"}`}>
                       {formaterDateSeance(l.date, langue, false)}
                       {l.source === "coingecko" && ` · ${t("en direct", "live")}`}
@@ -122,6 +131,7 @@ export function Moniteur({ lignes, classes }: { lignes: LigneMarche[]; classes: 
                     <div className="flex justify-end">
                       <MiniCourbe valeurs={l.courbe} ton={l.var1m === null ? "neutre" : l.var1m >= 0 ? "hausse" : "baisse"} />
                     </div>
+                    <span className="sr-only">{t("Sur 3 mois :", "Over 3 months:")} {variation(surTroisMois(l), l.variation, langue).texte}</span>
                   </td>
                 </tr>
               ))}
