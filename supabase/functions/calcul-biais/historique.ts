@@ -46,6 +46,45 @@ export interface LigneHistorique {
   part_disponible: number;
   rendement_1j: number | null;
   rendement_5j: number | null;
+  rendement_20j: number | null;
+  // Note de chaque facteur et mesures brutes connues avant la séance : de quoi mesurer ce
+  // que chaque donnée annonce réellement (corrélation avec les rendements suivants).
+  notes: Record<string, number | null>;
+}
+
+const arrondi4 = (v: number | null) => (v === null || !Number.isFinite(v) ? null : Math.round(v * 1e4) / 1e4);
+
+// Mesures brutes à la date d : variations et niveaux tels qu'ils étaient connus.
+function mesures(q: (cle: string, max: number) => PointTaux[], cot: { net: number }[]): Record<string, number | null> {
+  const variation = (cle: string, n: number) => {
+    const s = q(cle, n + 1);
+    return s.length > n ? s[s.length - 1].taux - s[s.length - 1 - n].taux : null;
+  };
+  const variationPct = (cle: string, n: number) => {
+    const s = q(cle, n + 1);
+    return s.length > n && s[s.length - 1 - n].taux > 0 ? (s[s.length - 1].taux / s[s.length - 1 - n].taux - 1) * 100 : null;
+  };
+  const dernier = (cle: string) => q(cle, 1).at(-1)?.taux ?? null;
+  const ffr = dernier("FFR");
+  const un = dernier("US1Y");
+  const deux = dernier("US2Y");
+  const vix = q("VIX", 260);
+  const triees = vix.map((p) => p.taux).sort((a, b) => a - b);
+  const mediane = triees.length ? triees[Math.floor(triees.length / 2)] : null;
+  const v = vix.at(-1)?.taux ?? null;
+  const v3 = dernier("VIX3M");
+  const net = cot.at(-1)?.net;
+  return {
+    ecartFed: ffr !== null && un !== null && deux !== null ? (un + deux) / 2 - ffr : null,
+    d1y5: variation("US1Y", 5), d2y5: variation("US2Y", 5), d2y20: variation("US2Y", 20),
+    d10n5: variation("US10Y", 5), d10r5: variation("US10R", 5), d10r20: variation("US10R", 20), reel: dernier("US10R"),
+    vix: v, vixEcart: v !== null && mediane !== null ? v - mediane : null, vixVar5: variation("VIX", 5),
+    structure: v !== null && v3 ? v / v3 : null,
+    hy: dernier("HY"), hyVar5: variation("HY", 5), hyVar20: variation("HY", 20),
+    dxy20: variationPct("DXY", 20), nfci: dernier("NFCI"), nfciVar4: variation("NFCI", 4),
+    wti63: variationPct("WTI", 63),
+    cotCentile: net === undefined || cot.length < 26 ? null : cot.filter((p) => p.net <= net).length / cot.length,
+  };
 }
 
 const jourMoins = (date: string, jours: number) => new Date(Date.parse(`${date}T00:00:00Z`) - jours * 86_400_000).toISOString().slice(0, 10);
@@ -89,14 +128,14 @@ export function rejouer(donnees: DonneesHistoriques, du: string, au: string): { 
       const cycle = { emplois: m("NONFARM_PAYROLL", d), chomage: m("UNEMPLOYMENT", d), pib: m("REAL_GDP", d, 8), cpi: m("CPI", d), pce: m("CORE_PCE", d) };
       const regles = REGLES_BIAIS.indices[indice];
       const r = combiner([
-        facteurFed(indice, q("US2Y", d, 5), q("FFR", d, 5), connus(donnees.decisions, d, DELAIS.decisions, 6), d, q("US1Y", d, 5)),
+        facteurFed(indice, q("US2Y", d, 6), q("FFR", d, 5), connus(donnees.decisions, d, DELAIS.decisions, 6), d, q("US1Y", d, 6)),
         facteurTaux(indice, q("US10Y", d, 10), q("US10R", d, 10), d, "FRED (DGS10, DFII10)"),
         facteurMacro(indice, publications, d, "FRED (BLS, BEA)"),
         facteurRegimeMacro(indice, cycle, q("WTI", d, 70), d),
         facteurLiquidite(indice, q("WALCL", d, 10), q("TGA", d, 10), q("RRP", d, 30), q("M2", d, 15), d),
         facteurDollar(indice, q("DXY", d, 25), d),
         facteurCourbe(indice, q("US3M", d, 5), q("US2Y", d, 5), q("US10Y", d, 5), d),
-        facteurRisque(indice, q(regles.volatilite, d, 260), q(REGLES_BIAIS.risque.credit, d, 10), d, q("VIX", d, 5), q("VIX3M", d, 5)),
+        facteurRisque(indice, q("VIX", d, 260), q("VIX3M", d, 5), d, q(REGLES_BIAIS.risque.credit, d, 5)),
         facteurConditions(indice, q("NFCI", d, 8), d),
         facteurPositionnement(indice, connus(donnees.cot[regles.cot] ?? [], d, DELAIS.COT, REGLES_BIAIS.positionnement.semainesHistorique), d),
       ]);
@@ -106,11 +145,22 @@ export function rejouer(donnees: DonneesHistoriques, du: string, au: string): { 
       const regime = analyserRegime(cycle, q("WTI", d, 70), d);
       const avant = cours[i - 1].taux;
       const apres5 = cours[i + 4]?.taux;
+      const apres20 = cours[i + 19]?.taux;
+      const cotConnu = connus(donnees.cot[regles.cot] ?? [], d, DELAIS.COT, REGLES_BIAIS.positionnement.semainesHistorique)
+        .filter((p) => p.interet_ouvert > 0).map((p) => ({ net: (p.fonds_long - p.fonds_court) / p.interet_ouvert }));
+      const notes: Record<string, number | null> = {
+        ...Object.fromEntries(r.facteurs.map((f) => [f.cle, f.note])),
+        ...mesures((cle, max) => q(cle, d, max), cotConnu),
+        croissance: regime ? regime.croissance : null,
+        inflation: regime ? regime.inflation : null,
+      };
       lignes.push({
         date: d, indice, score: r.score, biais: r.biais, regime: regime?.regime[0] ?? null,
         part_disponible: Math.round((dispo / total) * 1000) / 1000,
         rendement_1j: avant > 0 ? Math.round((cours[i].taux / avant - 1) * 1e6) / 1e4 : null,
         rendement_5j: avant > 0 && apres5 !== undefined ? Math.round((apres5 / avant - 1) * 1e6) / 1e4 : null,
+        rendement_20j: avant > 0 && apres20 !== undefined ? Math.round((apres20 / avant - 1) * 1e6) / 1e4 : null,
+        notes: Object.fromEntries(Object.entries(notes).map(([k, v]) => [k, arrondi4(v)])),
       });
       // Régime du mois : celui de la dernière séance du mois (calculé une fois, sur le S&P 500).
       if (indice === "SPX" && regime) {

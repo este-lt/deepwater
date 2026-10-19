@@ -1,7 +1,7 @@
 import "server-only";
 import { estFerieNyse } from "./feries";
 import type { ClientSupabase } from "./supabase";
-import type { BiaisRow, ValidationRow } from "./types-supabase";
+import type { BiaisRow, SessionBiais, ValidationRow } from "./types-supabase";
 
 export interface FacteurBiais {
   cle: string;
@@ -28,6 +28,7 @@ export interface BiaisAffiche {
   symbole: string;
   nom: string;
   date: string;
+  session: SessionBiais;
   biais: BiaisRow["biais"];
   score: number;
   raisons: string[];
@@ -43,12 +44,18 @@ export interface LigneHistorique {
   parIndice: Record<string, { biais: BiaisRow["biais"]; score: number; decision: Decision["decision"] | null }>;
 }
 
+// Biais de chaque session de la séance la plus récente, par indice.
+export type BiaisSessions = Record<string, Partial<Record<SessionBiais, { biais: BiaisRow["biais"]; score: number; calculeLe: string }>>>;
+
 export interface EtatBiais {
   seanceVisee: string;
+  // Par indice : le biais de la dernière session calculée (détail complet).
   courants: BiaisAffiche[];
+  sessions: BiaisSessions;
   historique: LigneHistorique[];
-  autoActif: boolean;
 }
+
+export const ORDRE_SESSIONS: SessionBiais[] = ["asie", "londres", "new_york"];
 
 const INDICES = ["SPX", "NDX"];
 
@@ -72,15 +79,15 @@ export function seanceVisee(maintenant: Date): string {
 }
 
 export async function lireBiais(supabase: ClientSupabase): Promise<EtatBiais> {
-  const [tickers, biais, parametres] = await Promise.all([
+  const [tickers, biais] = await Promise.all([
     supabase.from("tickers_suivis").select("id, symbole, nom").in("symbole", INDICES),
     supabase
       .from("biais_quotidien")
-      .select("id, date, ticker_id, biais, score_numerique, raisons, facteurs, origine, version_regles, cree_le")
+      .select("id, date, ticker_id, session, biais, score_numerique, raisons, facteurs, origine, version_regles, cree_le")
       .eq("statut", "actif")
       .order("date", { ascending: false })
-      .limit(INDICES.length * 12),
-    supabase.from("parametres_utilisateur").select("biais_auto_actif").maybeSingle(),
+      .order("cree_le", { ascending: false })
+      .limit(INDICES.length * ORDRE_SESSIONS.length * 12),
   ]);
   if (tickers.error) throw new Error(`Lecture des indices impossible : ${tickers.error.message}`);
   if (biais.error) throw new Error(`Lecture du biais impossible : ${biais.error.message}`);
@@ -97,8 +104,17 @@ export async function lireBiais(supabase: ClientSupabase): Promise<EtatBiais> {
 
   const parTicker = new Map((tickers.data ?? []).map((t) => [t.id, t]));
   const derniereDate = lignes[0]?.date;
-  const courants = lignes
-    .filter((l) => l.date === derniereDate)
+  const duJour = lignes.filter((l) => l.date === derniereDate);
+  const sessions: BiaisSessions = {};
+  for (const l of duJour) {
+    const t = parTicker.get(l.ticker_id);
+    if (!t) continue;
+    (sessions[t.symbole] ??= {})[l.session] ??= { biais: l.biais, score: Number(l.score_numerique), calculeLe: l.cree_le };
+  }
+  // Par indice, la session calculée le plus récemment (lignes triées par date de calcul).
+  const vus = new Set<string>();
+  const courants = duJour
+    .filter((l) => !vus.has(l.ticker_id) && vus.add(l.ticker_id))
     .flatMap((l) => {
       const t = parTicker.get(l.ticker_id);
       if (!t) return [];
@@ -107,6 +123,7 @@ export async function lireBiais(supabase: ClientSupabase): Promise<EtatBiais> {
         symbole: t.symbole,
         nom: t.nom,
         date: l.date,
+        session: l.session,
         biais: l.biais,
         score: Number(l.score_numerique),
         raisons: Array.isArray(l.raisons) ? (l.raisons as string[]) : [],
@@ -119,20 +136,23 @@ export async function lireBiais(supabase: ClientSupabase): Promise<EtatBiais> {
     })
     .sort((a, b) => INDICES.indexOf(a.symbole) - INDICES.indexOf(b.symbole));
 
+  // Séances passées : le biais de la session de New York (à défaut, la dernière calculée).
   const historique = new Map<string, LigneHistorique>();
   for (const l of lignes) {
     if (l.date === derniereDate) continue;
     const t = parTicker.get(l.ticker_id);
     if (!t) continue;
     const ligne = historique.get(l.date) ?? { date: l.date, parIndice: {} };
-    ligne.parIndice[t.symbole] = { biais: l.biais, score: Number(l.score_numerique), decision: decisions.get(l.id)?.decision ?? null };
+    if (!ligne.parIndice[t.symbole] || l.session === "new_york") {
+      ligne.parIndice[t.symbole] = { biais: l.biais, score: Number(l.score_numerique), decision: decisions.get(l.id)?.decision ?? null };
+    }
     historique.set(l.date, ligne);
   }
 
   return {
     seanceVisee: seanceVisee(new Date()),
     courants,
+    sessions,
     historique: [...historique.values()].slice(0, 10),
-    autoActif: parametres.data?.biais_auto_actif ?? false,
   };
 }

@@ -27,23 +27,6 @@ async function utilisateur(): Promise<{ userId: string; t: Traduire }> {
   return { userId, t: traducteur((await lirePreferences()).langue) };
 }
 
-export async function basculerBiaisAuto(actif: boolean): Promise<Retour> {
-  const { userId, t } = await utilisateur();
-  const supabase = await supabaseUtilisateur();
-  const { error } = await supabase
-    .from("parametres_utilisateur")
-    .update({ biais_auto_actif: actif === true })
-    .eq("clerk_user_id", userId);
-  if (error) return { ok: false, message: `${t("Réglage non enregistré", "Setting not saved")} : ${error.message}` };
-  revalidatePath("/");
-  return {
-    ok: true,
-    message: actif
-      ? t("Calcul automatique activé : chaque jour ouvré à 8 h 30, heure de New York.", "Automatic calculation on: every business day at 8:30 a.m. New York time.")
-      : t("Calcul automatique coupé pour votre compte.", "Automatic calculation off for your account."),
-  };
-}
-
 export async function calculerBiais(): Promise<Retour> {
   const { t } = await utilisateur();
   const supabase = await supabaseUtilisateur();

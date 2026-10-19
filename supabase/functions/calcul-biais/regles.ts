@@ -1,20 +1,32 @@
 // Règles du biais quotidien : fichier de configuration modifiable.
-// Uniquement des données fondamentales et de marché concrètes (politique de la Fed, taux,
-// statistiques publiées, régime macroéconomique, dollar, courbe des taux, volatilité
-// implicite, crédit, conditions financières) : aucun
-// indicateur ni concept d'analyse technique (ni moyenne mobile, ni momentum, ni niveau de prix).
+// Uniquement des données fondamentales et de marché concrètes : aucun indicateur ni concept
+// d'analyse technique (ni moyenne mobile, ni momentum, ni niveau de prix).
 // Chaque facteur donne une note entre -1 (baissier) et +1 (haussier). Le score final
 // est la moyenne pondérée des facteurs disponibles ; un facteur sans donnée récente
 // est marqué « indisponible » et son poids est retiré du calcul (jamais de valeur inventée).
+//
+// Version d (19/10/2026), fondée sur la mesure : chaque facteur a été rejoué de 2021 à 2026
+// et comparé aux séances suivantes, séparément sur 2021-2023 et 2024-2026. Seuls trois
+// facteurs annoncent la séance dans le même sens sur les deux périodes et les deux indices :
+// la révision des anticipations de la Fed (taux à 1 et 2 ans sur 5 séances), les surprises
+// macro et la peur mesurée par les options (VIX face à sa médiane, VIX / VIX3M), qui
+// précède en moyenne une hausse. Les niveaux (hausses déjà anticipées, inflation, taux réel)
+// sont déjà dans les prix et rendaient le biais baissier pendant des mois de hausse ; le
+// dollar, la courbe, les conditions financières, la liquidité et le COT n'annoncent rien de
+// stable sur la séance. Ils restent affichés comme contexte, avec un poids nul.
 //
 // Après modification : relancer les tests (deno test supabase/functions/calcul-biais),
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
 export const REGLES_BIAIS = {
-  version: "2026-10-19c",
+  version: "2026-10-19d",
 
-  // Conversion du score (entre -1 et +1) en biais.
-  seuils: { haussier: 0.2, baissier: -0.2 },
+  // Conversion du score (entre -1 et +1) en biais. Seuils asymétriques : le marché monte
+  // environ 55 % des séances, un biais baissier n'est juste que sur un score très négatif
+  // (2021-2026 : score >= +0,2 suivi d'une hausse 55 à 65 % du temps ; score <= -0,45
+  // suivi d'une baisse 62 % du temps ; entre -0,45 et -0,2, la baisse n'était pas plus
+  // probable que la hausse).
+  seuils: { haussier: 0.2, baissier: -0.45 },
 
   // Le biais n'est publié que si au moins cette part du poids total est disponible.
   partPoidsMinimale: 0.5,
@@ -22,29 +34,26 @@ export const REGLES_BIAIS = {
   indices: {
     SPX: {
       libelle: "S&P 500",
-      poids: { fed: 0.18, taux: 0.14, macro: 0.14, cycle: 0.12, liquidite: 0.1, dollar: 0.08, courbe: 0.04, risque: 0.1, conditions: 0.05, positionnement: 0.05 },
+      // Poids nul : facteur affiché comme contexte, hors score.
+      poids: { fed: 0.3, macro: 0.3, risque: 0.4, taux: 0, cycle: 0, liquidite: 0, dollar: 0, courbe: 0, conditions: 0, positionnement: 0, publications: 0 },
       // Contrat à terme du rapport COT de la CFTC (positionnement).
       cot: "13874A",
-      // Indice de volatilité implicite propre à l'indice.
-      volatilite: "VIX",
     },
     NDX: {
       libelle: "Nasdaq-100",
-      // Les valeurs technologiques réagissent davantage aux taux longs.
-      poids: { fed: 0.18, taux: 0.18, macro: 0.1, cycle: 0.12, liquidite: 0.1, dollar: 0.08, courbe: 0.04, risque: 0.1, conditions: 0.05, positionnement: 0.05 },
+      // Mêmes poids : la mesure ne justifie aucune différence entre les deux indices.
+      poids: { fed: 0.3, macro: 0.3, risque: 0.4, taux: 0, cycle: 0, liquidite: 0, dollar: 0, courbe: 0, conditions: 0, positionnement: 0, publications: 0 },
       cot: "209742",
-      volatilite: "VXN",
     },
   },
 
-  // Politique de la Fed : ce que le marché anticipe (taux à 1 an et à 2 ans contre taux
-  // effectif des Fed funds) et le sens de la dernière décision. Hausse anticipée ou décidée
-  // = baissier.
+  // Anticipations de la Fed : révision sur 5 séances de la moyenne des taux à 1 et 2 ans.
+  // Des anticipations qui montent (plus de hausses ou moins de baisses) = baissier. Le niveau
+  // face aux Fed funds et la dernière décision sont affichés, sans entrer dans la note.
   fed: {
-    ecartPleinPts: 0.5, // 1 an et 2 ans 0,5 pt au-dessus des Fed funds -> note -1 (hausses anticipées)
-    partAnticipation: 0.6,
+    seancesVariation: 5,
+    variationPleinePts: 0.15, // +15 pb en 5 séances -> note -1
     joursDecisionRecente: 200,
-    joursMemeSens: 365,
     ageMaxJours: 7,
   },
 
@@ -106,8 +115,9 @@ export const REGLES_BIAIS = {
     ageMaxJoursPetrole: 10,
   },
 
-  // Dollar (indice large de la Fed, DXY) : fiche de corrélations, un dollar qui monte fait
-  // baisser le S&P 500 (résultats des multinationales, conditions financières mondiales).
+  // Dollar (indice large de la Fed, DXY) : contexte seulement. Dollar et actions évoluent
+  // souvent en sens inverse le même jour, mais aucun effet stable n'a été mesuré sur la
+  // séance suivante (2021-2026).
   dollar: {
     serie: "DXY",
     seancesVariation: 20,
@@ -137,29 +147,24 @@ export const REGLES_BIAIS = {
   },
 
   // Positionnement (rapport COT de la CFTC) : position nette des fonds à effet de levier en
-  // part de l'intérêt ouvert, comparée à ses 3 dernières années. Un positionnement extrême
-  // est fragile (lecture contrarienne) : très acheteurs = baissier, très vendeurs = haussier.
+  // part de l'intérêt ouvert, comparée à ses 3 dernières années. Contexte seulement : la
+  // lecture contrarienne (très acheteurs = baissier) a été démentie par la mesure 2024-2026.
   positionnement: {
     semainesHistorique: 156,
     ecartPlein: 0.4, // centile 90 % (0,5 + 0,4) -> note -1
     ageMaxJours: 14,
   },
 
-  // Appétit pour le risque : volatilité implicite des options (VIX ou VXN), structure par
-  // terme (VIX contre VIX à 3 mois) et spread de crédit à haut rendement. Une volatilité
-  // au-dessus de sa médiane d'un an, une structure inversée ou un spread qui s'écarte =
-  // baissier.
+  // Peur sur les options (VIX, pour les deux indices) : VIX face à sa médiane d'un an et
+  // structure VIX / VIX3M. Une peur au-dessus de la normale a été suivie en moyenne d'une
+  // hausse (2021-2026, les deux périodes, les deux indices) : note positive. Le spread de
+  // crédit à haut rendement est affiché, sans entrer dans la note.
   risque: {
-    seancesVariation: 5,
     joursMediane: 365,
-    ecartPleinVolPts: 8, // volatilité 8 points au-dessus de sa médiane -> note -1
-    variationPleineVolPts: 5, // +5 points en 5 séances -> note -1
+    ecartPleinVolPts: 8, // VIX 8 points au-dessus de sa médiane -> moitié de note +1
+    structureNeutre: 0.9, // VIX / VIX3M habituel
+    structurePleine: 0.15, // ratio 1,05 -> moitié de note +1 ; 0,75 -> moitié de note -1
     credit: "HY",
-    variationPleineCreditPts: 0.4, // spread +0,40 pt en 5 séances -> note -1
-    partVolatilite: 0.45,
-    partStructure: 0.2, // le reste : crédit
-    structureNeutre: 0.9, // VIX / VIX3M habituel (structure normale)
-    structurePleine: 0.15, // ratio 1,05 -> note -1 ; 0,75 -> note +1
     ageMaxJours: 7,
   },
 
@@ -176,4 +181,4 @@ export const REGLES_BIAIS = {
 };
 
 export type CleIndice = keyof typeof REGLES_BIAIS.indices;
-export type CleFacteur = "fed" | "taux" | "macro" | "cycle" | "liquidite" | "dollar" | "courbe" | "risque" | "conditions" | "positionnement";
+export type CleFacteur = "fed" | "taux" | "macro" | "cycle" | "liquidite" | "dollar" | "courbe" | "risque" | "conditions" | "positionnement" | "publications";

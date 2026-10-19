@@ -67,7 +67,7 @@ réponses « Note » ou « Information » jamais mises en cache. Endpoints payan
 
 | Source | Raison |
 |---|---|
-| Cours en séance (indices, devises, matières premières) | aucune source officielle gratuite ; l'API non officielle de Yahoo Finance fonctionne mais contrevient à ses conditions d'utilisation (écartée) |
+| Cours en séance (indices au comptant, devises, matières premières) | aucune source officielle gratuite ; l'API non officielle de Yahoo Finance fonctionne mais contrevient à ses conditions d'utilisation (écartée). Contrats à terme ES et NQ : Massive (offre gratuite, décalée de 8 h), utilisé pour juger le biais par session |
 | Stooq | protégé par une vérification anti-robot |
 | Reuters, Bloomberg | plus de flux RSS public gratuit |
 | SEC EDGAR (initiés, 13F), fondamentales, actions | retirés : concernent des entreprises individuelles |
@@ -221,48 +221,80 @@ Sur iPhone : Safari, Partager, « Sur l'écran d'accueil » ouvre Deepwater en p
 Scoring automatique basé sur des règles, pas une prédiction garantie ni un conseil en
 investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
-Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026, version c).
+Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026, version d).
 
-| Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
+### Ce qui a été corrigé (version d)
+
+Les versions a à c additionnaient des facteurs choisis a priori. Rejouées de 2021 à 2026,
+elles laissaient le biais baissier pendant des mois de hausse (toute l'année 2021, 2026)
+et neutre pendant 2024 (+23 %). Mesure faite facteur par facteur (corrélation avec la
+séance suivante, séparément sur 2021-2023 et 2024-2026, S&P 500 et Nasdaq-100) :
+
+- **sens inversé** : la peur sur les options (VIX au-dessus de sa médiane, structure
+  VIX / VIX3M tendue) a été suivie en moyenne d'une **hausse** ; le dollar en hausse
+  aussi ; la lecture contrarienne du COT est démentie sur 2024-2026 ;
+- **sans pouvoir stable** : courbe des taux, conditions financières, liquidité, niveau du
+  taux réel, régime macro (les niveaux sont déjà dans les prix) ;
+- **sens confirmé sur les deux périodes** : révision des anticipations de la Fed (taux à
+  1 et 2 ans sur 5 séances), surprises macro.
+
+| Facteur du score | Donnée | Poids |
 |---|---|---|
-| Politique de la Fed | ce que le marché anticipe (moyenne des écarts taux à 1 an et à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 18 % / 18 % |
-| Taux longs | moitié variation sur 5 séances (taux à 10 ans 60 %, taux réel à 10 ans 40 %), moitié niveau du taux réel à 10 ans face à un repère neutre fixe de 1,5 % (1 pt au-dessus = note −1) | 14 % / 18 % |
-| Surprise macro | chiffres américains face au consensus sur 30 jours (60 %, fil instantané) et publications FRED des 45 derniers jours face aux précédentes (40 %) | 14 % / 10 % |
-| Régime macroéconomique | croissance (emplois créés sur 3 mois face à 100 k par mois, chômage sur 3 mois, PIB annualisé face à 2 %) et inflation (PCE sous-jacent face à la cible de 2 %, accélération du CPI sur 3 mois, pétrole sur 3 mois) ; note = 0,6 × croissance − 0,4 × inflation | 12 % / 12 % |
-| Liquidité de la Fed | liquidité nette (bilan − compte du Trésor − prises en pension inversées) sur 4 semaines (70 %, +150 Md$ = note +1) et M2 sur 1 an face à 4 % (30 %) | 10 % / 10 % |
-| Dollar (DXY) | indice large du dollar sur 20 séances ; dollar qui monte = baissier (+2 % = note −1) | 8 % / 8 % |
-| Courbe des taux | 10 ans − 2 ans et 10 ans − 3 mois ; inversion = baissier (−0,5 pt = note −1), pente normale plafonnée à +0,5 | 4 % / 4 % |
-| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances (45 %), structure VIX / VIX3M (20 %, 0,9 neutre, 1,05 = note −1), spread haut rendement sur 5 séances (35 %) | 10 % / 10 % |
-| Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 5 % / 5 % |
-| Positionnement (COT) | fonds à effet de levier nets en part de l'intérêt ouvert (contrats E-mini S&P 500 et Nasdaq-100), centile sur 3 ans ; lecture contrarienne (centile 90 = note −1) | 5 % / 5 % |
+| Anticipations de la Fed | révision sur 5 séances de la moyenne des taux à 1 et 2 ans (+15 pb = note −1) ; le niveau face aux Fed funds et la dernière décision sont affichés, hors note | 30 % |
+| Surprise macro | chiffres américains face au consensus sur 30 jours (60 %) et publications FRED face aux précédentes (40 %) | 30 % |
+| Peur sur les options | VIX face à sa médiane d'un an et VIX / VIX3M (0,9 neutre) : une peur au-dessus de la normale est **haussière** | 40 % |
 
-Concepts sans donnée gratuite structurée, donc absents du calcul : ISM, PMI, projections du
-FOMC, futures sur Fed funds (approchés par les bons du Trésor), sentiment des particuliers,
-ratios de valorisation (CAPE, prime de risque actions), rotations sectorielles.
+Contexte affiché, poids nul : taux longs, régime macroéconomique, liquidité de la Fed,
+dollar, courbe des taux, conditions financières, positionnement COT, et chiffres publiés
+depuis la session précédente (toutes économies).
 
-Note de −1 à +1 par facteur, moyenne pondérée, haussier ≥ +0,2, baissier ≤ −0,2.
-Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais avec moins de
-la moitié du poids. Calcul unique pour tous, depuis la base seulement ; automatique à
-8 h 30 (New York) si un utilisateur l'active, sinon manuel (un calcul toutes les 5 minutes
-par compte). Jours fériés de la Bourse de New York gérés. Chaque version des règles est
-enregistrée telle quelle (`regles_versions`, page Admin).
+Seuils asymétriques : haussier dès +0,2, baissier seulement sous −0,45 (le marché monte
+environ 55 % des séances ; entre −0,45 et −0,2, la baisse n'était pas plus probable).
+
+Résultat rejoué (2021-2026, séance de clôture à clôture) : haussier juste 56 % (S&P 500,
+2021-2023, base 52,5 %) et 62 % (2024-2026, base 55,5 %) ; Nasdaq-100 63 % et 65 % (bases
+54 % et 57 %) ; baissier juste 62,5 % (24 séances, 2022), jamais déclenché sur 2024-2026.
+Corrélation du score avec la séance : +0,10 à +0,11 sur chaque période (versions a à c :
+proche de zéro ou négative sur 2024-2026). Les signes ont été choisis parce qu'ils sont
+identiques sur les deux périodes ; la vraie validation reste le suivi en direct.
+
+Note de −1 à +1 par facteur, moyenne pondérée. Facteur sans donnée récente :
+« indisponible », poids retiré ; pas de biais avec moins de la moitié du poids. Calcul
+unique pour tous, depuis la base seulement. Chaque version des règles est enregistrée
+telle quelle (`regles_versions`, page Admin).
+
+### Un biais par session
+
+Trois biais par séance de New York, sur les contrats à terme S&P 500 (ES) et Nasdaq-100
+(NQ), calculés automatiquement avant chaque session (heure de New York, changements
+d'heure compris, `_shared/sessions.ts`) :
+
+| Session | Période | Calcul |
+|---|---|---|
+| Asie | de la réouverture du Globex (18 h la veille) à l'ouverture de Londres (8 h à Londres) | 17 h 35 la veille |
+| Londres | de l'ouverture de Londres à 9 h 30 | 2 h 35 |
+| New York | de 9 h 30 à 16 h | 9 h 05, après les chiffres de 8 h 30 |
+
+Le bouton « Calculer maintenant » calcule la session qui commence dans l'heure, sinon
+celle en cours (un calcul toutes les 5 minutes par compte).
+
+Chaque biais est jugé sur sa propre session : `collecte-sessions` lit les barres de 30
+minutes des contrats ES et NQ chez **Massive** (offre gratuite « Futures Basic » : données
+décalées de 8 heures, 2 ans d'historique, 5 appels par minute ; contrat le plus proche,
+roulement le jeudi 8 jours avant l'échéance) et enregistre l'ouverture, la clôture et le
+rendement de chaque session (`cours_sessions`). Clé `massive_api_key` dans le Vault : la
+collecte démarre seule dès qu'elle y est (rattrapage d'un trimestre par heure, puis les
+7 derniers jours à 5 h, 17 h et 22 h UTC).
 
 ### Historique de performance
 
 Mode `historique` de `calcul-biais` (`{"mode":"historique","annee":2024,"trimestre":1}`) :
 les règles en vigueur rejouées séance par séance avec uniquement ce qui était publié avant
-la séance (délais de publication de chaque série dans `historique.ts`), résultats dans
-`historique_biais` et `regimes_historiques`. Un trimestre par appel (limite de calcul des
-Edge Functions). Rejoué de 2021 à 2026 : la macro américaine en base ne remonte qu'à
-octobre 2020. Limites : séries FRED révisées (pas les premières estimations) ; pas
-d'historique du consensus. Fiche par régime : `fiche_regimes(version)`.
-
-Résultat au 19/10/2026 (règles 2026-10-19c, 2021-2026, environ 1 450 séances par indice) :
-sur le S&P 500, biais haussier juste 54,9 % du temps (293 séances) pour 53,4 % de séances
-en hausse en moyenne ; biais baissier juste 51,9 % (183 séances) pour 46,6 % de séances en
-baisse. Sur le Nasdaq-100 : 56,5 % pour 54,9 %, et 49,7 % pour 45,1 %. L'avantage existe
-surtout du côté baissier et reste faible : le biais résume le contexte fondamental, ce
-n'est pas un signal d'entrée.
+la séance (délais de publication de chaque série dans `historique.ts`), avec la note de
+chaque facteur et les mesures brutes (`historique_biais.notes`) pour mesurer ce que chaque
+donnée annonce. Un trimestre par appel (limite de calcul des Edge Functions). Rejoué de
+2021 à 2026 : la macro américaine en base ne remonte qu'à octobre 2020. Limites : séries
+FRED révisées (pas les premières estimations) ; pas d'historique du consensus.
 
 ## Données fondamentales (`collecte-fondamentaux`, `collecte-marches`)
 

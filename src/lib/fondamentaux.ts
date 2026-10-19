@@ -1,7 +1,7 @@
 import "server-only";
 import { lireClotures } from "./marches";
 import type { ClientSupabase } from "./supabase";
-import type { ConsensusRow, HistoriqueBiaisRow } from "./types-supabase";
+import type { ConsensusRow, HistoriqueBiaisRow, SessionBiais } from "./types-supabase";
 
 // Données fondamentales du tableau de bord, toutes déjà en base : anticipations de taux
 // (bons du Trésor), prime de terme, taux de la zone euro, liquidité de la Fed, rapport COT,
@@ -211,9 +211,46 @@ export function statistiquesBiais(lignes: Pick<HistoriqueBiaisRow, "indice" | "d
 export interface BiaisPublie {
   date: string;
   indice: string;
+  session: SessionBiais;
   biais: "haussier" | "baissier" | "neutre";
   score: number;
-  rendement: number | null; // rendement de la séance visée, une fois clôturée
+  rendement: number | null; // rendement de la session visée (contrat à terme), une fois close
+}
+
+// Biais de la séance (règles en vigueur rejouées) jugé sur chaque session du contrat à terme.
+export interface PerformanceSession {
+  indice: string;
+  session: SessionBiais;
+  seances: number;
+  hausse: number | null; // part des sessions en hausse, tous biais confondus
+  haussier: { seances: number; reussite: number | null };
+  baissier: { seances: number; reussite: number | null };
+}
+
+export function statistiquesSessions(
+  historique: Pick<HistoriqueBiaisRow, "indice" | "date" | "biais">[],
+  cours: { indice: string; date: string; session: SessionBiais; rendement: number }[],
+): PerformanceSession[] {
+  const biais = new Map(historique.map((h) => [`${h.indice}:${h.date}`, h.biais]));
+  const resultat: PerformanceSession[] = [];
+  for (const indice of ["SPX", "NDX"]) {
+    for (const session of ["asie", "londres", "new_york"] as SessionBiais[]) {
+      const lignes = cours.flatMap((c) => {
+        const b = c.indice === indice && c.session === session ? biais.get(`${indice}:${c.date}`) : undefined;
+        return b ? [{ biais: b, rendement: c.rendement }] : [];
+      });
+      if (lignes.length === 0) continue;
+      const part = (l: typeof lignes, juste: (r: number) => boolean) => (l.length ? l.filter((x) => juste(x.rendement)).length / l.length : null);
+      const h = lignes.filter((l) => l.biais === "haussier");
+      const b = lignes.filter((l) => l.biais === "baissier");
+      resultat.push({
+        indice, session, seances: lignes.length, hausse: part(lignes, (r) => r > 0),
+        haussier: { seances: h.length, reussite: part(h, (r) => r > 0) },
+        baissier: { seances: b.length, reussite: part(b, (r) => r < 0) },
+      });
+    }
+  }
+  return resultat;
 }
 
 export interface FicheRegime {
@@ -233,12 +270,14 @@ export interface EtatFondamentaux {
   consensus: Pick<ConsensusRow, "id" | "instant" | "devise" | "libelle" | "publie" | "prevision" | "precedent" | "unite" | "surprise" | "famille" | "source">[];
   version: string | null;
   performance: PerformanceIndice[];
+  sessions: PerformanceSession[];
+  sessionsDepuis: string | null;
   publies: BiaisPublie[];
   regimeActuel: { regime: string; mois: string } | null;
   fiche: FicheRegime[];
 }
 
-const SYMBOLES = ["FFR", "US1M", "US3M", "US6M", "US1Y", "US2Y", "US10Y", "TP10", "EU2Y", "EU10Y", "WALCL", "TGA", "RRP", "M2", "SPX", "NDX"];
+const SYMBOLES = ["FFR", "US1M", "US3M", "US6M", "US1Y", "US2Y", "US10Y", "TP10", "EU2Y", "EU10Y", "WALCL", "TGA", "RRP", "M2"];
 
 export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFondamentaux> {
   const aujourdhui = jour(Date.now());
@@ -259,6 +298,13 @@ export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFo
 
   // Historique de performance (version en cours) et biais réellement publiés sur 30 jours.
   const historique: Pick<HistoriqueBiaisRow, "indice" | "date" | "biais" | "rendement_1j" | "rendement_5j">[] = [];
+  const coursSessions: { indice: string; date: string; session: SessionBiais; rendement: number }[] = [];
+  for (let debut = 0; ; debut += 1000) {
+    const { data, error } = await supabase.from("cours_sessions").select("indice, date, session, rendement").order("date").range(debut, debut + 999);
+    if (error) throw new Error(`Lecture des cours par session impossible : ${error.message}`);
+    coursSessions.push(...(data ?? []).map((c) => ({ ...c, rendement: Number(c.rendement) })));
+    if ((data ?? []).length < 1000) break;
+  }
   if (v) {
     for (let debut = 0; ; debut += 1000) {
       const { data, error } = await supabase.from("historique_biais").select("indice, date, biais, rendement_1j, rendement_5j")
@@ -268,28 +314,31 @@ export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFo
       if ((data ?? []).length < 1000) break;
     }
   }
-  const [publies, regime, fiche, indices] = await Promise.all([
-    supabase.from("biais_quotidien").select("date, biais, score_numerique, ticker_id")
-      .eq("statut", "actif").gte("date", jour(Date.now() - 45 * 86_400_000)).order("date", { ascending: false }).limit(60),
+  const depuis45 = jour(Date.now() - 45 * 86_400_000);
+  const [publies, regime, fiche, indices, cours] = await Promise.all([
+    supabase.from("biais_quotidien").select("date, session, biais, score_numerique, ticker_id")
+      .eq("statut", "actif").gte("date", depuis45).order("date", { ascending: false }).limit(180),
     v ? supabase.from("regimes_historiques").select("mois, regime").eq("version", v).order("mois", { ascending: false }).limit(1).maybeSingle() : null,
     v ? supabase.rpc("fiche_regimes", { p_version: v }) : null,
     supabase.from("tickers_suivis").select("id, symbole").in("symbole", ["SPX", "NDX"]),
+    supabase.from("cours_sessions").select("indice, date, session, rendement").gte("date", depuis45),
   ]);
+  if (cours.error) throw new Error(`Lecture des cours par session impossible : ${cours.error.message}`);
   if (indices.error) throw new Error(`Lecture des indices impossible : ${indices.error.message}`);
   const symboleDe = new Map((indices.data ?? []).map((x) => [x.id, x.symbole]));
   if (publies.error) throw new Error(`Lecture des biais publiés impossible : ${publies.error.message}`);
   if (regime?.error) throw new Error(`Lecture du régime impossible : ${regime.error.message}`);
   if (fiche?.error) throw new Error(`Lecture de la fiche des régimes impossible : ${fiche.error.message}`);
 
-  const rendementSeance = (indice: string, date: string) => {
-    const s = clotures[indice] ?? [];
-    const i = s.findIndex((p) => p.date === date);
-    return i > 0 && s[i - 1].cloture > 0 ? (s[i].cloture / s[i - 1].cloture - 1) * 100 : null;
-  };
+  // Chaque biais est jugé sur sa propre session (cours du contrat à terme, collecte-sessions).
+  const rendements = new Map((cours.data ?? []).map((c) => [`${c.indice}:${c.date}:${c.session}`, Number(c.rendement)]));
   const publiesLignes: BiaisPublie[] = (publies.data ?? []).flatMap((b) => {
     const indice = symboleDe.get(b.ticker_id);
     if (indice !== "SPX" && indice !== "NDX") return [];
-    return [{ date: b.date, indice, biais: b.biais, score: Number(b.score_numerique), rendement: rendementSeance(indice, b.date) }];
+    return [{
+      date: b.date, indice, session: b.session, biais: b.biais, score: Number(b.score_numerique),
+      rendement: rendements.get(`${indice}:${b.date}:${b.session}`) ?? null,
+    }];
   });
 
   const ficheParRegime = new Map<string, FicheRegime>();
@@ -329,6 +378,8 @@ export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFo
     consensus: consensus.data ?? [],
     version: v,
     performance: ["SPX", "NDX"].map((i) => statistiquesBiais(historique, i)),
+    sessions: statistiquesSessions(historique, coursSessions),
+    sessionsDepuis: coursSessions[0]?.date ?? null,
     publies: publiesLignes,
     regimeActuel: regime?.data ? { regime: regime.data.regime, mois: regime.data.mois } : null,
     fiche: [...ficheParRegime.values()].sort((a, b) => b.mois - a.mois),

@@ -5,9 +5,11 @@ import { validerBiais } from "@/app/actions";
 import { Pastille } from "@/components/carte";
 import { DateLocale } from "@/components/horodatage";
 import { useLangue } from "@/components/langue";
-import type { BiaisAffiche, FacteurBiais } from "@/lib/biais";
+import type { BiaisAffiche, BiaisSessions, FacteurBiais } from "@/lib/biais";
 
 const TONS = { haussier: "hausse", baissier: "baisse", neutre: "neutre" } as const;
+const SESSIONS = { asie: ["Asie", "Asia"], londres: ["Londres", "London"], new_york: ["New York", "New York"] } as const;
+const ORDRE_SESSIONS = ["asie", "londres", "new_york"] as const;
 const LIBELLES = { haussier: ["Haussier", "Bullish"], baissier: ["Baissier", "Bearish"], neutre: ["Neutre", "Neutral"] } as const;
 const SOURCES: Record<string, [string, string]> = {
   "fred:SP500": ["FRED (S&P 500)", "FRED (S&P 500)"],
@@ -26,21 +28,27 @@ const SOURCES: Record<string, [string, string]> = {
   "FRED (BLS, BEA, EIA)": ["FRED (emploi, PIB, prix, pétrole)", "FRED (jobs, GDP, prices, oil)"],
   "FRED (VIX, spread haut rendement ICE BofA)": ["FRED (VIX, spread haut rendement ICE BofA)", "FRED (VIX, ICE BofA high-yield spread)"],
   "FRED (VXN, spread haut rendement ICE BofA)": ["FRED (VXN, spread haut rendement ICE BofA)", "FRED (VXN, ICE BofA high-yield spread)"],
+  "FRED (VIXCLS, VXVCLS, spread haut rendement ICE BofA)": ["FRED (VIX, VIX à 3 mois, spread haut rendement ICE BofA)", "FRED (VIX, 3-month VIX, ICE BofA high-yield spread)"],
 };
+// Seuils des règles en vigueur (supabase/functions/calcul-biais/regles.ts) : asymétriques.
+const SEUIL_HAUSSIER = 0.2;
+const SEUIL_BAISSIER = -0.45;
 const libelleSource = (s: string, en: boolean) => SOURCES[s]?.[en ? 1 : 0] ?? s;
 // Texte d'un facteur dans la langue de l'utilisateur (anglais quand le calcul l'a produit).
 const texteFacteur = (f: FacteurBiais, en: boolean) => (en && f.texte_en ? f.texte_en : f.texte);
 const points = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.round(Math.abs(v) * 100)}`;
 
-// Jauge de -100 à +100 : zone neutre au centre, remplissage depuis le milieu.
+// Jauge de -100 à +100 : zone neutre entre les deux seuils, remplissage depuis le milieu.
 function Jauge({ score }: { score: number }) {
   const { t } = useLangue();
   const position = ((Math.max(-1, Math.min(1, score)) + 1) / 2) * 100;
   const haut = score >= 0;
+  const debutNeutre = ((SEUIL_BAISSIER + 1) / 2) * 100;
+  const finNeutre = ((SEUIL_HAUSSIER + 1) / 2) * 100;
   return (
     <div className="flex flex-col gap-1">
       <div className="relative h-2.5 overflow-hidden rounded-full bg-surface-3" aria-hidden>
-        <div className="absolute inset-y-0 left-[40%] w-[20%] bg-neutre-doux" />
+        <div className="absolute inset-y-0 bg-neutre-doux" style={{ left: `${debutNeutre}%`, width: `${finNeutre - debutNeutre}%` }} />
         <div className="absolute inset-y-0 left-1/2 w-px bg-bordure-forte" />
         <div
           className={`absolute inset-y-0 animate-remplir rounded-full ${haut ? "origin-left bg-hausse/80" : "origin-right bg-baisse/80"}`}
@@ -60,16 +68,20 @@ function LigneFacteur({ f }: { f: FacteurBiais }) {
   const { langue, t } = useLangue();
   const en = langue === "en";
   const largeur = f.note === null ? 0 : Math.abs(f.note) * 50;
+  const contexte = f.poids === 0;
   return (
     <li className="flex flex-col gap-1 py-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-        <span className="font-medium">{en && f.libelle_en ? f.libelle_en : f.libelle}</span>
+        <span className={contexte ? "text-attenue" : "font-medium"}>{en && f.libelle_en ? f.libelle_en : f.libelle}</span>
         <span className="chiffres text-xs text-attenue">
-          {t("poids", "weight")} {Math.round(f.poids * 100)}{en ? "%" : " %"} ·{" "}
-          {f.statut === "ok" && f.note !== null ? `${t("note", "score")} ${points(f.note)}` : <span className="text-alerte">{t("indisponible", "unavailable")}</span>}
+          {f.statut !== "ok" || f.note === null
+            ? <span className="text-alerte">{t("indisponible", "unavailable")}</span>
+            : contexte
+            ? t("contexte, hors score", "context, not scored")
+            : `${t("poids", "weight")} ${Math.round(f.poids * 100)}${en ? "%" : " %"} · ${t("note", "score")} ${points(f.note)}`}
         </span>
       </div>
-      {f.statut === "ok" && f.note !== null && (
+      {f.statut === "ok" && f.note !== null && !contexte && (
         <div className="relative h-1.5 rounded-full bg-surface-3" aria-hidden>
           <div className="absolute inset-y-0 left-1/2 w-px bg-bordure-forte" />
           <div
@@ -85,7 +97,33 @@ function LigneFacteur({ f }: { f: FacteurBiais }) {
   );
 }
 
-export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: number }) {
+// Les trois sessions de la séance : biais de chacune, ou « à venir ».
+function BandeSessions({ sessions, active }: { sessions: BiaisSessions[string]; active: BiaisAffiche["session"] }) {
+  const { langue, t } = useLangue();
+  const en = langue === "en";
+  return (
+    <ol className="grid grid-cols-3 gap-1.5" aria-label={t("Biais par session", "Bias by session")}>
+      {ORDRE_SESSIONS.map((s) => {
+        const b = sessions[s];
+        return (
+          <li key={s} className={`flex min-w-0 flex-col items-start gap-1 rounded-lg px-2 py-1.5 ${s === active ? "bg-accent-doux" : "bg-surface"}`}>
+            <span className="text-[0.7rem] text-attenue">{SESSIONS[s][en ? 1 : 0]}</span>
+            {b ? (
+              <span className="flex flex-wrap items-center gap-1">
+                <Pastille ton={TONS[b.biais]}>{LIBELLES[b.biais][en ? 1 : 0]}</Pastille>
+                <span className="chiffres text-[0.7rem] text-attenue">{points(b.score)}</span>
+              </span>
+            ) : (
+              <span className="text-xs text-discret">{t("à venir", "upcoming")}</span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+export function CarteBiais({ biais, sessions, delai = 0 }: { biais: BiaisAffiche; sessions: BiaisSessions[string]; delai?: number }) {
   const { langue, t } = useLangue();
   const en = langue === "en";
   const [enCours, demarrer] = useTransition();
@@ -110,7 +148,7 @@ export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold tracking-tight">{biais.nom}</h3>
-          <p className="text-xs text-attenue">{biais.symbole}</p>
+          <p className="text-xs text-attenue">{biais.symbole} · {t("session", "session")} {SESSIONS[biais.session][en ? 1 : 0]}</p>
         </div>
         <div className="flex items-center gap-2">
           <Pastille ton={TONS[biais.biais]}>{LIBELLES[biais.biais][en ? 1 : 0]}</Pastille>
@@ -119,6 +157,8 @@ export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: 
           </span>
         </div>
       </header>
+
+      <BandeSessions sessions={sessions} active={biais.session} />
 
       <Jauge score={biais.score} />
 
@@ -145,10 +185,26 @@ export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: 
           <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span> {t(`Détail des ${biais.facteurs.length} facteurs`, `Details of the ${biais.facteurs.length} factors`)}
         </summary>
         <ul className="mt-1 flex flex-col divide-y divide-bordure">
-          {biais.facteurs.map((f) => (
+          {biais.facteurs.filter((f) => f.poids > 0).map((f) => (
             <LigneFacteur key={f.cle} f={f} />
           ))}
         </ul>
+        {biais.facteurs.some((f) => f.poids === 0) && (
+          <>
+            <h4 className="mt-3 text-xs font-medium uppercase tracking-wide text-discret">{t("Contexte, hors score", "Context, not scored")}</h4>
+            <p className="text-[0.7rem] text-discret">
+              {t(
+                "Rejoués sur 2021-2026, ces facteurs n'annoncent pas la séance de façon stable : ils décrivent le fond du marché sans entrer dans le score.",
+                "Replayed over 2021-2026, these factors do not reliably predict the session: they describe the market backdrop without entering the score.",
+              )}
+            </p>
+            <ul className="flex flex-col divide-y divide-bordure">
+              {biais.facteurs.filter((f) => f.poids === 0).map((f) => (
+                <LigneFacteur key={f.cle} f={f} />
+              ))}
+            </ul>
+          </>
+        )}
       </details>
 
       <footer className="flex flex-col gap-2 border-t border-bordure pt-3">

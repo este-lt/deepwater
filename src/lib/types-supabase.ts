@@ -63,10 +63,13 @@ export type PrixRow = {
   maj_le: string;
 }
 
+export type SessionBiais = "asie" | "londres" | "new_york";
+
 export type BiaisRow = {
   id: string;
   date: string;
   ticker_id: string;
+  session: SessionBiais;
   biais: "haussier" | "baissier" | "neutre";
   score_numerique: number;
   raisons: Json;
@@ -237,6 +240,22 @@ export type HistoriqueBiaisRow = {
   part_disponible: number;
   rendement_1j: number | null;
   rendement_5j: number | null;
+  rendement_20j: number | null;
+  notes: Json | null;
+}
+
+export type CoursSessionRow = {
+  indice: "SPX" | "NDX";
+  date: string;
+  session: SessionBiais;
+  contrat: string;
+  debut: string;
+  fin: string;
+  ouverture: number;
+  cloture: number;
+  rendement: number;
+  source: string;
+  maj_le: string;
 }
 
 export type RegimeHistoriqueRow = {
@@ -298,6 +317,7 @@ export type Database = {
       historique_biais: Table<HistoriqueBiaisRow>;
       regimes_historiques: Table<RegimeHistoriqueRow>;
       regles_versions: Table<RegleVersionRow>;
+      cours_sessions: Table<CoursSessionRow>;
     };
     Views: { [_ in never]: never };
     Functions: {

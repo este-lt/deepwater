@@ -1,14 +1,16 @@
 // Biais quotidien du S&P 500 et du Nasdaq-100, calculé une seule fois pour tout le
 // monde à partir des données déjà en base (aucun appel d'API externe), uniquement sur
-// des données concrètes : politique de la Fed, taux, statistiques et consensus, régime
-// macroéconomique, liquidité, dollar, courbe des taux, volatilité implicite, crédit,
-// conditions financières, positionnement. Aucune analyse technique.
-// Modes : « auto » (pg_cron, si au moins un utilisateur l'a activé), « manuel » (bouton,
-// limité par utilisateur côté serveur), « historique » (règles rejouées sur une année).
+// des données concrètes. Score : révision des anticipations de la Fed, surprises macro, peur
+// sur les options ; le reste (taux longs, régime, liquidité, dollar, courbe, conditions,
+// positionnement) est affiché comme contexte. Aucune analyse technique (voir regles.ts).
+// Un biais par session (Asie, Londres, New York) : voir _shared/sessions.ts. Modes : « auto »
+// (pg_cron, avant chaque session), « manuel » (bouton, limité par utilisateur côté serveur),
+// « historique » (règles rejouées sur un trimestre).
 import { servirTacheProtegee } from "../_shared/garde.ts";
 import { json } from "../_shared/http.ts";
 import { executerTache } from "../_shared/journal.ts";
 import { type Famille, SENS_ACTIONS } from "../_shared/publications.ts";
+import { debutSessionPrecedente, LIBELLES_SESSIONS, type Session, SESSIONS, sessionVisee } from "../_shared/sessions.ts";
 import { admin } from "../_shared/supabase.ts";
 import {
   combiner,
@@ -19,12 +21,14 @@ import {
   facteurLiquidite,
   facteurMacro,
   facteurPositionnement,
+  facteurPublications,
   facteurRegimeMacro,
   facteurRisque,
   facteurTaux,
   type PointMacro,
   type PointTaux,
   type PositionCot,
+  type PublicationConsensus,
   type PublicationMacro,
   seanceVisee,
   type SurpriseConsensus,
@@ -102,14 +106,13 @@ async function calculerHistorique(annee: number, trimestre: number | null) {
   const au = trimestre ? new Date(Date.UTC(annee, trimestre * 3, 0)).toISOString().slice(0, 10) : `${annee}-12-31`;
   const periode = trimestre ? `T${trimestre} ${annee}` : `${annee}`;
   const indices = Object.keys(REGLES_BIAIS.indices) as CleIndice[];
-  const volatilites = indices.map((i) => REGLES_BIAIS.indices[i].volatilite);
   const symboles = [...new Set([
-    ...indices, ...volatilites, "VIX", "VIX3M", "US1Y", "US2Y", "US3M", "US10Y", "US10R", "FFR", REGLES_BIAIS.risque.credit,
+    ...indices, "VIX", "VIX3M", "US1Y", "US2Y", "US3M", "US10Y", "US10R", "FFR", REGLES_BIAIS.risque.credit,
     REGLES_BIAIS.conditions.serie, REGLES_BIAIS.dollar.serie, "WTI", ...SYMBOLES_LIQUIDITE,
   ])];
   const ids = await idsTickers(symboles);
   const donnees: DonneesHistoriques = {
-    series: await lireSeries(ids, symboles, `${annee - 2}-01-01`, `${annee + 1}-01-15`),
+    series: await lireSeries(ids, symboles, `${annee - 2}-01-01`, `${annee + 1}-02-15`),
     decisions: await decisionsFed(`${annee - 5}-01-01`),
     macro: await lireMacro(`${annee - 3}-01-01`),
     cot: await lireCot(indices.map((i) => REGLES_BIAIS.indices[i].cot), `${annee - 4}-01-01`),
@@ -134,15 +137,16 @@ async function calculerHistorique(annee: number, trimestre: number | null) {
 
 // ---------------------------------------------------------------------------- Biais du jour
 
-async function calculerJour(origine: "auto" | "manuel") {
+async function calculerJour(origine: "auto" | "manuel", sessionDemandee: Session | null) {
   const db = admin();
-  const seance = seanceVisee(new Date());
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const maintenant = new Date();
+  const seance = seanceVisee(maintenant);
+  const session = sessionDemandee ?? sessionVisee(maintenant, seance);
+  const aujourdhui = maintenant.toISOString().slice(0, 10);
   const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions, dollar: rDollar } = REGLES_BIAIS;
   const indices = Object.keys(REGLES_BIAIS.indices) as CleIndice[];
-  const volatilites = indices.map((i) => REGLES_BIAIS.indices[i].volatilite);
   const symboles = [...new Set([
-    rRisque.credit, ...volatilites, "VIX", "VIX3M", "US1Y", "US2Y", "FFR", "US10R", rConditions.serie, rDollar.serie, "WTI", ...SYMBOLES_LIQUIDITE,
+    rRisque.credit, "VIX", "VIX3M", "US1Y", "US2Y", "FFR", "US10R", rConditions.serie, rDollar.serie, "WTI", ...SYMBOLES_LIQUIDITE,
   ])];
 
   // Version des règles conservée telle quelle (traçabilité des pondérations).
@@ -158,8 +162,8 @@ async function calculerJour(origine: "auto" | "manuel") {
       .gte("date_evenement", jourMoins(rMacro.fenetreJours))
       .order("date_evenement", { ascending: false }),
     decisionsFed(jourMoins(3 * 366)),
-    db.from("publications_consensus").select("libelle, publie, prevision, unite, surprise, famille, instant")
-      .eq("devise", "USD").gte("instant", new Date(Date.now() - rMacro.fenetreConsensusJours * 86_400_000).toISOString()),
+    db.from("publications_consensus").select("devise, libelle, publie, prevision, unite, surprise, famille, instant")
+      .gte("instant", new Date(Date.now() - rMacro.fenetreConsensusJours * 86_400_000).toISOString()),
   ]);
   for (const [nom, r] of [["taux", taux], ["taux courts", tauxCourts], ["calendrier", publications], ["consensus", consensus]] as const) {
     if (r.error) throw new Error(`Lecture ${nom} impossible : ${r.error.message}`);
@@ -183,7 +187,12 @@ async function calculerJour(origine: "auto" | "manuel") {
       variation: p.variation === null ? null : Number(p.variation),
     });
   }
-  const surprises: SurpriseConsensus[] = (consensus.data ?? []).map((c) => ({
+  const toutes: PublicationConsensus[] = (consensus.data ?? []).map((c) => ({
+    devise: c.devise, libelle: c.libelle, publie: Number(c.publie), prevision: Number(c.prevision), unite: c.unite,
+    surprise: Number(c.surprise), instant: c.instant,
+  }));
+  const depuis = debutSessionPrecedente(seance, session);
+  const surprises: SurpriseConsensus[] = (consensus.data ?? []).filter((c) => c.devise === "USD").map((c) => ({
     libelle: c.libelle, publie: Number(c.publie), prevision: Number(c.prevision), unite: c.unite, surprise: Number(c.surprise),
     sens: SENS_ACTIONS[c.famille as Famille] ?? 0, instant: c.instant,
   }));
@@ -208,9 +217,10 @@ async function calculerJour(origine: "auto" | "manuel") {
       facteurLiquidite(indice, serie("WALCL"), serie("TGA"), serie("RRP"), serie("M2"), aujourdhui),
       facteurDollar(indice, serie(rDollar.serie), aujourdhui),
       facteurCourbe(indice, courts("3month"), courts("2year"), serieTaux, aujourdhui),
-      facteurRisque(indice, serie(regles.volatilite), serie(rRisque.credit), aujourdhui, serie("VIX"), serie("VIX3M")),
+      facteurRisque(indice, serie("VIX"), serie("VIX3M"), aujourdhui, serie(rRisque.credit)),
       facteurConditions(indice, serie(rConditions.serie), aujourdhui),
       facteurPositionnement(indice, cot[regles.cot] ?? [], aujourdhui),
+      facteurPublications(indice, toutes, depuis, maintenant.toISOString()),
     ]);
     if (!r.ok) {
       bilan[indice] = `non publié : ${r.raison}`;
@@ -219,7 +229,7 @@ async function calculerJour(origine: "auto" | "manuel") {
 
     // Données inchangées depuis le biais actif : rien à remplacer.
     const { data: actif } = await db.from("biais_quotidien").select("id, facteurs")
-      .eq("ticker_id", tickerId).eq("date", seance).eq("statut", "actif").maybeSingle();
+      .eq("ticker_id", tickerId).eq("date", seance).eq("session", session).eq("statut", "actif").maybeSingle();
     const empreinte = (f: { cle: string; statut: string; note: number | null; texte: string; texte_en?: string }[]) =>
       JSON.stringify(f.map((x) => [x.cle, x.statut, x.note, x.texte, x.texte_en ?? ""]));
     if (actif && empreinte(actif.facteurs ?? []) === empreinte(r.facteurs)) {
@@ -229,7 +239,7 @@ async function calculerJour(origine: "auto" | "manuel") {
 
     const { error } = await db.rpc("remplacer_biais", {
       p_biais: {
-        date: seance, ticker_id: tickerId, biais: r.biais, score_numerique: r.score, raisons: r.raisons, facteurs: r.facteurs,
+        date: seance, session, ticker_id: tickerId, biais: r.biais, score_numerique: r.score, raisons: r.raisons, facteurs: r.facteurs,
         sources_citees: r.sources, origine, version_regles: REGLES_BIAIS.version,
       },
     });
@@ -242,8 +252,8 @@ async function calculerJour(origine: "auto" | "manuel") {
     throw new Error(`Aucun biais publié : ${Object.entries(bilan).map(([i, b]) => `${i} ${b}`).join(" ; ")}`);
   }
   return {
-    message: `Séance du ${seance} (${origine}) : ${Object.entries(bilan).map(([i, b]) => `${i} ${b}`).join(" ; ")}`,
-    details: { seance, origine, bilan },
+    message: `Séance du ${seance}, session ${LIBELLES_SESSIONS[session][0]} (${origine}) : ${Object.entries(bilan).map(([i, b]) => `${i} ${b}`).join(" ; ")}`,
+    details: { seance, session, origine, bilan },
   };
 }
 
@@ -257,6 +267,7 @@ servirTacheProtegee(async (corps) => {
     return json(resultat, resultat.ok ? 200 : 500);
   }
   const origine = corps.mode === "manuel" ? "manuel" : "auto";
-  const resultat = await executerTache("calcul-biais", () => calculerJour(origine));
+  const session = SESSIONS.includes(corps.session as Session) ? corps.session as Session : null;
+  const resultat = await executerTache("calcul-biais", () => calculerJour(origine, session));
   return json(resultat, resultat.ok ? 200 : 500);
 });

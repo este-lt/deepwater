@@ -27,6 +27,7 @@ const REGIMES_EN: Record<string, string> = {
   stagflation: "weak growth, high inflation",
 };
 
+const SESSIONS_COURT = { asie: ["Asie", "Asia"], londres: ["Londres", "London"], new_york: ["NY", "NY"] } as const;
 const NOMS_BIAIS = { haussier: ["haussier", "bullish"], baissier: ["baissier", "bearish"], neutre: ["neutre", "neutral"] } as const;
 const pc = (v: number | null, langue: Langue) => (v === null ? "—" : `${formaterNombre(v * 100, 0, langue)}${langue === "en" ? "%" : " %"}`);
 
@@ -107,10 +108,57 @@ export function SectionPerformance({ f, langue }: { f: EtatFondamentaux; langue:
           </div>
         )}
 
+        <div className="border-t border-bordure pt-4">
+          <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-attenue">{t("Par session (contrats à terme ES et NQ)", "By session (ES and NQ futures)")}</h3>
+          {f.sessions.length === 0 ? (
+            <p className="text-xs text-attenue">
+              {t(
+                "En attente des cours par session : la collecte démarre seule dès que la clé Massive est rangée dans le Vault (« massive_api_key »).",
+                "Waiting for session prices: collection starts on its own once the Massive key is stored in the Vault (“massive_api_key”).",
+              )}
+            </p>
+          ) : (
+            <>
+              <p className="mb-2 text-xs text-attenue">
+                {t("Biais de la séance jugé sur chaque session, depuis le", "Session bias judged on each session, since")} {formaterDateSeance(f.sessionsDepuis, langue)}.{" "}
+                {t("Entre parenthèses : l'écart en points à la fréquence de base de la session.", "In brackets: gap in points to the session's base rate.")}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="chiffres w-full min-w-[30rem] text-sm">
+                  <thead className="text-left text-xs text-attenue">
+                    <tr>
+                      <th className="pb-1 font-medium">{t("Indice", "Index")}</th>
+                      <th className="pb-1 font-medium">{t("Session", "Session")}</th>
+                      <th className="pb-1 text-right font-medium">{t("En hausse", "Up")}</th>
+                      <th className="pb-1 text-right font-medium">{t("Haussier juste", "Bullish right")}</th>
+                      <th className="pb-1 text-right font-medium">{t("Baissier juste", "Bearish right")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {f.sessions.map((s) => {
+                      const ecart = (v: number | null, base: number | null) =>
+                        v === null || base === null ? "" : ` (${v - base >= 0 ? "+" : "−"}${formaterNombre(Math.abs(v - base) * 100, 0, langue)})`;
+                      return (
+                        <tr key={`${s.indice}-${s.session}`} className="border-t border-bordure">
+                          <td className="py-1.5">{NOMS_INDICES[s.indice]}</td>
+                          <td className="py-1.5">{SESSIONS_COURT[s.session][langue === "en" ? 1 : 0]}</td>
+                          <td className="py-1.5 text-right">{pc(s.hausse, langue)} <span className="text-xs text-attenue">/ {s.seances}</span></td>
+                          <td className="py-1.5 text-right">{pc(s.haussier.reussite, langue)}<span className="text-xs text-attenue">{ecart(s.haussier.reussite, s.hausse)} / {s.haussier.seances}</span></td>
+                          <td className="py-1.5 text-right">{pc(s.baissier.reussite, langue)}<span className="text-xs text-attenue">{ecart(s.baissier.reussite, s.hausse === null ? null : 1 - s.hausse)} / {s.baissier.seances}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
         {clotures.length > 0 && (
           <div className="border-t border-bordure pt-4">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-attenue">
-              {t("Biais publiés (45 jours)", "Published biases (45 days)")} · {orientes > 0 ? `${reussis}/${orientes} ${t("dans le bon sens", "in the right direction")}` : t("aucun biais orienté", "no directional bias")}
+              {t("Biais publiés (45 jours), jugés sur leur session", "Published biases (45 days), judged on their session")} · {orientes > 0 ? `${reussis}/${orientes} ${t("dans le bon sens", "in the right direction")}` : t("aucun biais orienté", "no directional bias")}
             </h3>
             <ul className="flex flex-wrap gap-1.5">
               {clotures.slice(0, 24).map((b) => {
@@ -121,7 +169,7 @@ export function SectionPerformance({ f, langue }: { f: EtatFondamentaux; langue:
                     title={`${NOMS_INDICES[b.indice]} ${formaterDateSeance(b.date, langue)} : ${NOMS_BIAIS[b.biais][langue === "en" ? 1 : 0]} (${formaterNombre(b.score * 100, 0, langue)}), ${t("séance", "session")} ${formaterPct(b.rendement, 2, true, langue)}`}
                     className={`chiffres rounded-lg px-2 py-1 text-xs ${bon === null ? "bg-surface-2 text-attenue" : bon ? "bg-hausse-doux text-hausse" : "bg-baisse-doux text-baisse"}`}
                   >
-                    {b.indice === "SPX" ? "SPX" : "NDX"} {formaterDateSeance(b.date, langue, false)} {formaterPct(b.rendement, 1, true, langue)}
+                    {b.indice === "SPX" ? "SPX" : "NDX"} {formaterDateSeance(b.date, langue, false)} {SESSIONS_COURT[b.session][langue === "en" ? 1 : 0]} {formaterPct(b.rendement, 1, true, langue)}
                   </li>
                 );
               })}
