@@ -79,7 +79,7 @@ export default async function PageRapport({ searchParams }: { searchParams: Prom
   if (biais.courants.length) {
     const lib = { haussier: t("haussier", "bullish"), baissier: t("baissier", "bearish"), neutre: t("neutre", "neutral") };
     phrases.push(
-      `${t("Biais du jour :", "Daily bias:")} ${biais.courants.map((b) => `${b.nom} ${lib[b.biais]} (${Math.round(b.score * 100)})`).join(en ? "; " : " ; ")}.`,
+      `${t("Biais intraday :", "Intraday bias:")} ${biais.courants.map((b) => `${b.nom} ${lib[b.biais]} (${Math.round(b.score * 100)})`).join(en ? "; " : " ; ")}.`,
     );
   }
   const valides = forces.filter((f) => f.score !== null);

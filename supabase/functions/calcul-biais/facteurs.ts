@@ -66,7 +66,7 @@ const NOMS: Record<CleFacteur, [string, string]> = {
   courbe: ["Courbe des taux", "Yield curve"],
   risque: ["Peur sur les options (VIX)", "Options fear (VIX)"],
   conditions: ["Conditions financières", "Financial conditions"],
-  publications: ["Publications depuis la session précédente", "Releases since the previous session"],
+  publications: ["Publications depuis la dernière clôture", "Releases since the last close"],
 };
 
 const indisponible = (cle: CleFacteur, poids: number, texte: (l: L) => string, source: string): Facteur => ({
@@ -697,7 +697,7 @@ export interface PublicationConsensus {
   instant: string;
 }
 
-// Publications depuis le début de la session précédente : contexte de la session (poids nul,
+// Publications depuis la dernière clôture de New York : contexte de la séance (poids nul,
 // aucun effet mesuré à ce jour), les chiffres les plus surprenants, toutes économies.
 export function facteurPublications(indice: CleIndice, publications: PublicationConsensus[], depuis: string, maintenant: string): Facteur {
   const poids = REGLES_BIAIS.indices[indice].poids.publications;
@@ -707,7 +707,7 @@ export function facteurPublications(indice: CleIndice, publications: Publication
   const texte = (l: L) => {
     const fr = l === "fr";
     if (principales.length === 0) {
-      return fr ? "Aucun chiffre avec consensus publié depuis le début de la session précédente." : "No release with consensus since the start of the previous session.";
+      return fr ? "Aucun chiffre avec consensus publié depuis la dernière clôture de New York." : "No release with consensus since the last New York close.";
     }
     const parties = principales.map((p) => {
       const s = Math.round(p.surprise * 100);
@@ -717,8 +717,8 @@ export function facteurPublications(indice: CleIndice, publications: Publication
         : `${p.devise ? `${p.devise} ` : ""}${p.libelle} ${valeurConsensus(p.publie, p.unite, l)} vs ${valeurConsensus(p.prevision, p.unite, l)} expected (surprise ${ecart})`;
     });
     const debut = fr
-      ? `${retenues.length} chiffre${retenues.length > 1 ? "s" : ""} publié${retenues.length > 1 ? "s" : ""} depuis le début de la session précédente : `
-      : `${retenues.length} release${retenues.length > 1 ? "s" : ""} since the start of the previous session: `;
+      ? `${retenues.length} chiffre${retenues.length > 1 ? "s" : ""} publié${retenues.length > 1 ? "s" : ""} depuis la dernière clôture de New York : `
+      : `${retenues.length} release${retenues.length > 1 ? "s" : ""} since the last New York close: `;
     return `${debut}${parties.join(fr ? " ; " : "; ")}.`;
   };
   return disponible("publications", poids, 0, texte, source, principales[0]?.instant.slice(0, 10) ?? null);

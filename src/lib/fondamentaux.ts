@@ -211,16 +211,15 @@ export function statistiquesBiais(lignes: Pick<HistoriqueBiaisRow, "indice" | "d
 export interface BiaisPublie {
   date: string;
   indice: string;
-  session: SessionBiais;
   biais: "haussier" | "baissier" | "neutre";
   score: number;
-  rendement: number | null; // rendement de la session visée (contrat à terme), une fois close
+  rendement: number | null; // rendement intraday (contrat à terme, 9 h 30 - 16 h), une fois la séance close
 }
 
-// Biais de la séance (règles en vigueur rejouées) jugé sur chaque session du contrat à terme.
+// Biais de la séance (règles en vigueur rejouées) jugé en intraday : de l'ouverture à la
+// clôture de New York, sur le contrat à terme (session new_york de cours_sessions).
 export interface PerformanceSession {
   indice: string;
-  session: SessionBiais;
   seances: number;
   hausse: number | null; // part des sessions en hausse, tous biais confondus
   haussier: { seances: number; reussite: number | null };
@@ -234,21 +233,19 @@ export function statistiquesSessions(
   const biais = new Map(historique.map((h) => [`${h.indice}:${h.date}`, h.biais]));
   const resultat: PerformanceSession[] = [];
   for (const indice of ["SPX", "NDX"]) {
-    for (const session of ["asie", "londres", "new_york"] as SessionBiais[]) {
-      const lignes = cours.flatMap((c) => {
-        const b = c.indice === indice && c.session === session ? biais.get(`${indice}:${c.date}`) : undefined;
-        return b ? [{ biais: b, rendement: c.rendement }] : [];
-      });
-      if (lignes.length === 0) continue;
-      const part = (l: typeof lignes, juste: (r: number) => boolean) => (l.length ? l.filter((x) => juste(x.rendement)).length / l.length : null);
-      const h = lignes.filter((l) => l.biais === "haussier");
-      const b = lignes.filter((l) => l.biais === "baissier");
-      resultat.push({
-        indice, session, seances: lignes.length, hausse: part(lignes, (r) => r > 0),
-        haussier: { seances: h.length, reussite: part(h, (r) => r > 0) },
-        baissier: { seances: b.length, reussite: part(b, (r) => r < 0) },
-      });
-    }
+    const lignes = cours.flatMap((c) => {
+      const b = c.indice === indice && c.session === "new_york" ? biais.get(`${indice}:${c.date}`) : undefined;
+      return b ? [{ biais: b, rendement: c.rendement }] : [];
+    });
+    if (lignes.length === 0) continue;
+    const part = (l: typeof lignes, juste: (r: number) => boolean) => (l.length ? l.filter((x) => juste(x.rendement)).length / l.length : null);
+    const h = lignes.filter((l) => l.biais === "haussier");
+    const b = lignes.filter((l) => l.biais === "baissier");
+    resultat.push({
+      indice, seances: lignes.length, hausse: part(lignes, (r) => r > 0),
+      haussier: { seances: h.length, reussite: part(h, (r) => r > 0) },
+      baissier: { seances: b.length, reussite: part(b, (r) => r < 0) },
+    });
   }
   return resultat;
 }
@@ -300,7 +297,7 @@ export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFo
   const historique: Pick<HistoriqueBiaisRow, "indice" | "date" | "biais" | "rendement_1j" | "rendement_5j">[] = [];
   const coursSessions: { indice: string; date: string; session: SessionBiais; rendement: number }[] = [];
   for (let debut = 0; ; debut += 1000) {
-    const { data, error } = await supabase.from("cours_sessions").select("indice, date, session, rendement").order("date").range(debut, debut + 999);
+    const { data, error } = await supabase.from("cours_sessions").select("indice, date, session, rendement").eq("session", "new_york").order("date").range(debut, debut + 999);
     if (error) throw new Error(`Lecture des cours par session impossible : ${error.message}`);
     coursSessions.push(...(data ?? []).map((c) => ({ ...c, rendement: Number(c.rendement) })));
     if ((data ?? []).length < 1000) break;
@@ -316,12 +313,12 @@ export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFo
   }
   const depuis45 = jour(Date.now() - 45 * 86_400_000);
   const [publies, regime, fiche, indices, cours] = await Promise.all([
-    supabase.from("biais_quotidien").select("date, session, biais, score_numerique, ticker_id")
-      .eq("statut", "actif").gte("date", depuis45).order("date", { ascending: false }).limit(180),
+    supabase.from("biais_quotidien").select("date, biais, score_numerique, ticker_id")
+      .eq("statut", "actif").eq("session", "new_york").gte("date", depuis45).order("date", { ascending: false }).limit(60),
     v ? supabase.from("regimes_historiques").select("mois, regime").eq("version", v).order("mois", { ascending: false }).limit(1).maybeSingle() : null,
     v ? supabase.rpc("fiche_regimes", { p_version: v }) : null,
     supabase.from("tickers_suivis").select("id, symbole").in("symbole", ["SPX", "NDX"]),
-    supabase.from("cours_sessions").select("indice, date, session, rendement").gte("date", depuis45),
+    supabase.from("cours_sessions").select("indice, date, rendement").eq("session", "new_york").gte("date", depuis45),
   ]);
   if (cours.error) throw new Error(`Lecture des cours par session impossible : ${cours.error.message}`);
   if (indices.error) throw new Error(`Lecture des indices impossible : ${indices.error.message}`);
@@ -330,14 +327,14 @@ export async function lireFondamentaux(supabase: ClientSupabase): Promise<EtatFo
   if (regime?.error) throw new Error(`Lecture du régime impossible : ${regime.error.message}`);
   if (fiche?.error) throw new Error(`Lecture de la fiche des régimes impossible : ${fiche.error.message}`);
 
-  // Chaque biais est jugé sur sa propre session (cours du contrat à terme, collecte-sessions).
-  const rendements = new Map((cours.data ?? []).map((c) => [`${c.indice}:${c.date}:${c.session}`, Number(c.rendement)]));
+  // Chaque biais est jugé en intraday (cours du contrat à terme de 9 h 30 à 16 h, collecte-sessions).
+  const rendements = new Map((cours.data ?? []).map((c) => [`${c.indice}:${c.date}`, Number(c.rendement)]));
   const publiesLignes: BiaisPublie[] = (publies.data ?? []).flatMap((b) => {
     const indice = symboleDe.get(b.ticker_id);
     if (indice !== "SPX" && indice !== "NDX") return [];
     return [{
-      date: b.date, indice, session: b.session, biais: b.biais, score: Number(b.score_numerique),
-      rendement: rendements.get(`${indice}:${b.date}:${b.session}`) ?? null,
+      date: b.date, indice, biais: b.biais, score: Number(b.score_numerique),
+      rendement: rendements.get(`${indice}:${b.date}`) ?? null,
     }];
   });
 

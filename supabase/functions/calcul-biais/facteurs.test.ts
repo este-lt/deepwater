@@ -235,7 +235,7 @@ Deno.test("historique : jamais de donnée avant sa publication, rendements de la
   egal("séances", s.seances, lignes.length);
 });
 
-Deno.test("publications depuis la session précédente : contexte, chiffres les plus surprenants, fenêtre de temps", () => {
+Deno.test("publications depuis la dernière clôture : contexte, chiffres les plus surprenants, fenêtre de temps", () => {
   const pub = (libelle: string, surprise: number, instant: string, devise = "USD") => ({ devise, libelle, publie: 3.7, prevision: 3.6, unite: "%", surprise, instant });
   const f = facteurPublications("SPX", [
     pub("US CPI YoY", 0.5, "2026-10-15T12:30:00Z"),
@@ -243,7 +243,7 @@ Deno.test("publications depuis la session précédente : contexte, chiffres les 
     pub("Trop ancien", 1, "2026-10-14T12:30:00Z"),
   ], "2026-10-15T07:00:00.000Z", "2026-10-15T13:05:00.000Z");
   egal("poids nul", f.poids, 0);
-  if (!f.texte.startsWith("2 chiffres publiés depuis le début de la session précédente : USD US CPI YoY 3,7 % contre 3,6 % attendu (surprise +50)") || f.texte.includes("Trop ancien")) throw new Error(f.texte);
+  if (!f.texte.startsWith("2 chiffres publiés depuis la dernière clôture de New York : USD US CPI YoY 3,7 % contre 3,6 % attendu (surprise +50)") || f.texte.includes("Trop ancien")) throw new Error(f.texte);
   const vide = facteurPublications("SPX", [], "2026-10-15T07:00:00.000Z", "2026-10-15T13:05:00.000Z");
   egal("aucune publication", vide.statut, "ok");
   if (!vide.texte.startsWith("Aucun chiffre")) throw new Error(vide.texte);

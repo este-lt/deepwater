@@ -3,7 +3,7 @@
 
 export const WIDGETS = [
   { id: "indices", fr: "Indices prioritaires", en: "Key indices", large: true },
-  { id: "biais", fr: "Biais du jour (S&P 500, Nasdaq-100)", en: "Daily bias (S&P 500, Nasdaq-100)", large: true },
+  { id: "biais", fr: "Biais intraday (S&P 500, Nasdaq-100)", en: "Intraday bias (S&P 500, Nasdaq-100)", large: true },
   { id: "performance", fr: "Performance du biais et régimes", en: "Bias track record and regimes", large: true },
   { id: "anticipations", fr: "Anticipations de taux (Fed, zone euro)", en: "Rate expectations (Fed, euro area)", large: false },
   { id: "liquidite", fr: "Liquidité de la Fed et positionnement (COT)", en: "Fed liquidity and positioning (COT)", large: false },

@@ -3,7 +3,9 @@
 //   asie      de la réouverture du Globex (18 h à New York, la veille de D) à l'ouverture de Londres
 //   londres   de l'ouverture de Londres (8 h à Londres) à l'ouverture de New York
 //   new_york  de 9 h 30 à 16 h à New York
-// Utilisé par calcul-biais (biais par session) et collecte-sessions (cours par session).
+// Le biais publié est le biais intraday (session new_york) ; collecte-sessions mesure les trois
+// sessions, ce qui permet de juger le biais sur la séance elle-même (ouverture -> clôture).
+import { estFerieNyse } from "./feries.ts";
 
 export type Session = "asie" | "londres" | "new_york";
 export const SESSIONS: Session[] = ["asie", "londres", "new_york"];
@@ -33,21 +35,20 @@ export function bornesSession(date: string, session: Session): { debut: string; 
   return { debut: ouvertureNy, fin: instantLocal(date, "16:00", "America/New_York") };
 }
 
-// Session visée pour la séance `seance` (voir seanceVisee) : celle qui commence dans l'heure,
-// sinon celle en cours (avant la réouverture de la veille, la session asiatique qui vient).
-export function sessionVisee(maintenant: Date, seance: string): Session {
-  const t = maintenant.getTime() + 3_600_000;
-  if (t < Date.parse(bornesSession(seance, "londres").debut)) return "asie";
-  if (t < Date.parse(bornesSession(seance, "new_york").debut)) return "londres";
-  return "new_york";
+// Séance de New York précédente (week-ends et jours fériés sautés).
+export function seancePrecedente(seance: string): string {
+  let d = veille(seance);
+  for (;;) {
+    const j = new Date(Date.parse(`${d}T00:00:00Z`)).getUTCDay();
+    if (j !== 0 && j !== 6 && !estFerieNyse(d)) return d;
+    d = veille(d);
+  }
 }
 
-// Début de la session précédente (pour lister ce qui a été publié depuis).
-export function debutSessionPrecedente(seance: string, session: Session): string {
-  if (session === "londres") return bornesSession(seance, "asie").debut;
-  if (session === "new_york") return bornesSession(seance, "londres").debut;
-  // Session asiatique : la séance de New York précédente (la veille ouvrée au plus tard).
-  return instantLocal(veille(seance), "09:30", "America/New_York");
+// Début de la fenêtre des publications à signaler avant la séance : la dernière clôture de
+// New York (16 h), nuit asiatique et européenne comprises.
+export function debutPublications(seance: string): string {
+  return instantLocal(seancePrecedente(seance), "16:00", "America/New_York");
 }
 
 export const LIBELLES_SESSIONS: Record<Session, [string, string]> = {

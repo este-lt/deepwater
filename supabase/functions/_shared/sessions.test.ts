@@ -1,6 +1,6 @@
 // deno test supabase/functions/_shared/sessions.test.ts
 import { assertEquals } from "./verifications.ts";
-import { bornesSession, debutSessionPrecedente, sessionVisee } from "./sessions.ts";
+import { bornesSession, debutPublications, seancePrecedente } from "./sessions.ts";
 
 Deno.test("sessions : bornes en heure d'été (New York et Londres à l'heure d'été)", () => {
   // Lundi 19/10/2026 : New York UTC-4, Londres UTC+1.
@@ -17,15 +17,12 @@ Deno.test("sessions : semaines de décalage entre New York et Londres, heure d'h
   assertEquals(bornesSession("2026-12-07", "new_york").debut, "2026-12-07T14:30:00.000Z");
 });
 
-Deno.test("sessions : session visée selon l'heure, session précédente", () => {
-  assertEquals(sessionVisee(new Date("2026-10-18T21:35:00Z"), "2026-10-19"), "asie"); // dimanche 17 h 35 à New York
-  // La session qui commence dans l'heure : Londres à 2 h 35, New York à 9 h 05.
-  assertEquals(sessionVisee(new Date("2026-10-19T06:35:00Z"), "2026-10-19"), "londres");
-  assertEquals(sessionVisee(new Date("2026-10-19T13:05:00Z"), "2026-10-19"), "new_york");
-  // Sinon la session en cours : Asie à 1 h, Londres à 7 h, New York à 11 h.
-  assertEquals(sessionVisee(new Date("2026-10-19T05:00:00Z"), "2026-10-19"), "asie");
-  assertEquals(sessionVisee(new Date("2026-10-19T11:00:00Z"), "2026-10-19"), "londres");
-  assertEquals(sessionVisee(new Date("2026-10-19T15:00:00Z"), "2026-10-19"), "new_york");
-  assertEquals(debutSessionPrecedente("2026-10-19", "new_york"), "2026-10-19T07:00:00.000Z");
-  assertEquals(debutSessionPrecedente("2026-10-19", "asie"), "2026-10-18T13:30:00.000Z");
+Deno.test("sessions : séance précédente et fenêtre des publications depuis la dernière clôture", () => {
+  // Lundi 19/10/2026 : la dernière clôture est celle du vendredi 16/10 à 16 h (20:00Z).
+  assertEquals(seancePrecedente("2026-10-19"), "2026-10-16");
+  assertEquals(debutPublications("2026-10-19"), "2026-10-16T20:00:00.000Z");
+  // Vendredi 27/11/2026, lendemain de Thanksgiving : la veille ouvrée est le mercredi 25/11.
+  assertEquals(seancePrecedente("2026-11-27"), "2026-11-25");
+  // Heure d'hiver : 16 h à New York = 21:00Z.
+  assertEquals(debutPublications("2026-12-08"), "2026-12-07T21:00:00.000Z");
 });

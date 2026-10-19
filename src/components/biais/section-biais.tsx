@@ -16,7 +16,7 @@ export function SectionBiais({ etat, langue }: { etat: EtatBiais; langue: Langue
 
   return (
     <Carte
-      titre={t("Biais du jour", "Daily bias")}
+      titre={t("Biais intraday", "Intraday bias")}
       sousTitre={
         date
           ? `${t("Séance du", "Session of")} ${formaterDateSeance(date, langue)}${enRetard ? ` · ${t("pas encore recalculé pour la séance du", "not yet recalculated for the session of")} ${formaterDateSeance(etat.seanceVisee, langue)}` : ""}`
@@ -37,8 +37,8 @@ export function SectionBiais({ etat, langue }: { etat: EtatBiais; langue: Langue
               "Calculated once for everyone from stored data, with no technical analysis. The score relies on the three factors that, replayed from 2021 to 2026, predict the session in the same direction over both tested periods: the change in Fed expectations (1- and 2-year yields over 5 sessions), macro surprises (consensus and releases) and options fear (VIX vs its median, VIX / VIX3M), which on average preceded gains. Bullish from +20, bearish only below −45: the market rises on about 55% of sessions. The other factors (long rates, regime, liquidity, dollar, curve, conditions, COT) are shown as context. Your validation is visible only to you.",
             )}
             {` ${t(
-              "Un biais par session, calculé automatiquement avant chacune (heure de New York) : Asie à 17 h 35 la veille (session de 18 h à l'ouverture de Londres), Londres à 2 h 35 (jusqu'à 9 h 30), New York à 9 h 05 (de 9 h 30 à 16 h), après les chiffres américains de 8 h 30.",
-              "One bias per session, calculated automatically before each one (New York time): Asia at 5:35 p.m. the day before (session from 6 p.m. to the London open), London at 2:35 a.m. (until 9:30 a.m.), New York at 9:05 a.m. (9:30 a.m. to 4 p.m.), after the 8:30 a.m. US releases.",
+              "Biais intraday : la séance de New York, de 9 h 30 à 16 h, calculé automatiquement chaque jour ouvré à 9 h 05 (heure de New York), après les chiffres américains de 8 h 30.",
+              "Intraday bias: the New York session, 9:30 a.m. to 4 p.m., calculated automatically every business day at 9:05 a.m. New York time, after the 8:30 a.m. US releases.",
             )}`}
           </p>
         </div>
@@ -46,13 +46,13 @@ export function SectionBiais({ etat, langue }: { etat: EtatBiais; langue: Langue
     >
       {etat.courants.length === 0 ? (
         <p className="rounded-xl bg-surface-2 p-4 text-sm text-attenue">
-          {t("Aucun biais calculé pour l'instant. Lancez un calcul manuel : le calcul automatique tourne avant chaque session.", "No bias calculated yet. Run a manual calculation: the automatic calculation runs before each session.")}
+          {t("Aucun biais calculé pour l'instant. Lancez un calcul manuel : le calcul automatique tourne chaque jour ouvré à 9 h 05, heure de New York.", "No bias calculated yet. Run a manual calculation: the automatic calculation runs every business day at 9:05 a.m. New York time.")}
         </p>
       ) : (
         <div className="flex flex-col gap-5">
           <div className="grid gap-4 lg:grid-cols-2">
             {etat.courants.map((b, i) => (
-              <CarteBiais key={b.id} biais={b} sessions={etat.sessions[b.symbole] ?? {}} delai={i * 80} />
+              <CarteBiais key={b.id} biais={b} delai={i * 80} />
             ))}
           </div>
 
@@ -60,7 +60,7 @@ export function SectionBiais({ etat, langue }: { etat: EtatBiais; langue: Langue
             <details className="group">
               <summary className="cursor-pointer list-none text-sm text-attenue hover:text-texte">
                 <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span>{" "}
-                {t("Historique des séances précédentes (session de New York) et de vos décisions", "Previous sessions (New York session) and your decisions")}
+                {t("Historique des séances précédentes et de vos décisions", "Previous sessions and your decisions")}
               </summary>
               <div className="mt-3 overflow-x-auto">
                 <table className="chiffres w-full text-left text-xs sm:text-sm">

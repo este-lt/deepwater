@@ -263,28 +263,25 @@ Note de −1 à +1 par facteur, moyenne pondérée. Facteur sans donnée récent
 unique pour tous, depuis la base seulement. Chaque version des règles est enregistrée
 telle quelle (`regles_versions`, page Admin).
 
-### Un biais par session
+### Biais intraday
 
-Trois biais par séance de New York, sur les contrats à terme S&P 500 (ES) et Nasdaq-100
-(NQ), calculés automatiquement avant chaque session (heure de New York, changements
-d'heure compris, `_shared/sessions.ts`) :
+Un biais par séance, pour l'intraday : la séance de New York de 9 h 30 à 16 h (contrats à
+terme S&P 500 ES et Nasdaq-100 NQ), calculé automatiquement chaque jour ouvré à 9 h 05
+(heure de New York), après les chiffres américains de 8 h 30. Le bouton « Calculer
+maintenant » recalcule le biais de la séance visée (celle du jour avant 16 h, sinon la
+suivante). Le contexte liste les chiffres publiés face au consensus depuis la dernière
+clôture de New York (nuit asiatique et européenne comprises). Les biais Asie et Londres
+essayés le 19/10/2026 ont été retirés à la demande de l'utilisateur.
 
-| Session | Période | Calcul |
-|---|---|---|
-| Asie | de la réouverture du Globex (18 h la veille) à l'ouverture de Londres (8 h à Londres) | 17 h 35 la veille |
-| Londres | de l'ouverture de Londres à 9 h 30 | 2 h 35 |
-| New York | de 9 h 30 à 16 h | 9 h 05, après les chiffres de 8 h 30 |
-
-Le bouton « Calculer maintenant » calcule la session qui commence dans l'heure, sinon
-celle en cours (un calcul toutes les 5 minutes par compte).
-
-Chaque biais est jugé sur sa propre session : `collecte-sessions` lit les barres de 30
-minutes des contrats ES et NQ chez **Massive** (offre gratuite « Futures Basic » : données
-décalées de 8 heures, 2 ans d'historique, 5 appels par minute ; contrat le plus proche,
-roulement le jeudi 8 jours avant l'échéance) et enregistre l'ouverture, la clôture et le
-rendement de chaque session (`cours_sessions`). Clé `massive_api_key` dans le Vault : la
-collecte démarre seule dès qu'elle y est (rattrapage d'un trimestre par heure, puis les
-7 derniers jours à 5 h, 17 h et 22 h UTC).
+Le rejeu ci-dessous juge le biais de clôture à clôture (seules clôtures disponibles sur
+FRED). Pour le juger en intraday, `collecte-sessions` lit les barres de 30 minutes des
+contrats ES et NQ chez **Massive** (offre gratuite « Futures Basic » : données décalées de
+8 heures, 2 ans d'historique, 5 appels par minute ; contrat le plus proche, roulement le
+jeudi 8 jours avant l'échéance) et enregistre l'ouverture et la clôture de chaque session
+(`cours_sessions` ; la séance de New York sert au jugement intraday, l'Asie et Londres sont
+conservées pour analyse). Clé `massive_api_key` dans le Vault : la collecte démarre seule
+dès qu'elle y est (rattrapage d'un trimestre par heure, puis les 7 derniers jours à 5 h,
+17 h et 22 h UTC).
 
 ### Historique de performance
 

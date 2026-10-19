@@ -5,11 +5,9 @@ import { validerBiais } from "@/app/actions";
 import { Pastille } from "@/components/carte";
 import { DateLocale } from "@/components/horodatage";
 import { useLangue } from "@/components/langue";
-import type { BiaisAffiche, BiaisSessions, FacteurBiais } from "@/lib/biais";
+import type { BiaisAffiche, FacteurBiais } from "@/lib/biais";
 
 const TONS = { haussier: "hausse", baissier: "baisse", neutre: "neutre" } as const;
-const SESSIONS = { asie: ["Asie", "Asia"], londres: ["Londres", "London"], new_york: ["New York", "New York"] } as const;
-const ORDRE_SESSIONS = ["asie", "londres", "new_york"] as const;
 const LIBELLES = { haussier: ["Haussier", "Bullish"], baissier: ["Baissier", "Bearish"], neutre: ["Neutre", "Neutral"] } as const;
 const SOURCES: Record<string, [string, string]> = {
   "fred:SP500": ["FRED (S&P 500)", "FRED (S&P 500)"],
@@ -97,33 +95,7 @@ function LigneFacteur({ f }: { f: FacteurBiais }) {
   );
 }
 
-// Les trois sessions de la séance : biais de chacune, ou « à venir ».
-function BandeSessions({ sessions, active }: { sessions: BiaisSessions[string]; active: BiaisAffiche["session"] }) {
-  const { langue, t } = useLangue();
-  const en = langue === "en";
-  return (
-    <ol className="grid grid-cols-3 gap-1.5" aria-label={t("Biais par session", "Bias by session")}>
-      {ORDRE_SESSIONS.map((s) => {
-        const b = sessions[s];
-        return (
-          <li key={s} className={`flex min-w-0 flex-col items-start gap-1 rounded-lg px-2 py-1.5 ${s === active ? "bg-accent-doux" : "bg-surface"}`}>
-            <span className="text-[0.7rem] text-attenue">{SESSIONS[s][en ? 1 : 0]}</span>
-            {b ? (
-              <span className="flex flex-wrap items-center gap-1">
-                <Pastille ton={TONS[b.biais]}>{LIBELLES[b.biais][en ? 1 : 0]}</Pastille>
-                <span className="chiffres text-[0.7rem] text-attenue">{points(b.score)}</span>
-              </span>
-            ) : (
-              <span className="text-xs text-discret">{t("à venir", "upcoming")}</span>
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-export function CarteBiais({ biais, sessions, delai = 0 }: { biais: BiaisAffiche; sessions: BiaisSessions[string]; delai?: number }) {
+export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: number }) {
   const { langue, t } = useLangue();
   const en = langue === "en";
   const [enCours, demarrer] = useTransition();
@@ -148,7 +120,7 @@ export function CarteBiais({ biais, sessions, delai = 0 }: { biais: BiaisAffiche
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold tracking-tight">{biais.nom}</h3>
-          <p className="text-xs text-attenue">{biais.symbole} · {t("session", "session")} {SESSIONS[biais.session][en ? 1 : 0]}</p>
+          <p className="text-xs text-attenue">{biais.symbole} · {t("intraday, 9 h 30 - 16 h à New York", "intraday, 9:30 a.m. - 4 p.m. New York")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Pastille ton={TONS[biais.biais]}>{LIBELLES[biais.biais][en ? 1 : 0]}</Pastille>
@@ -157,8 +129,6 @@ export function CarteBiais({ biais, sessions, delai = 0 }: { biais: BiaisAffiche
           </span>
         </div>
       </header>
-
-      <BandeSessions sessions={sessions} active={biais.session} />
 
       <Jauge score={biais.score} />
 

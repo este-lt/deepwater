@@ -3,14 +3,14 @@
 // des données concrètes. Score : révision des anticipations de la Fed, surprises macro, peur
 // sur les options ; le reste (taux longs, régime, liquidité, dollar, courbe, conditions,
 // positionnement) est affiché comme contexte. Aucune analyse technique (voir regles.ts).
-// Un biais par session (Asie, Londres, New York) : voir _shared/sessions.ts. Modes : « auto »
-// (pg_cron, avant chaque session), « manuel » (bouton, limité par utilisateur côté serveur),
-// « historique » (règles rejouées sur un trimestre).
+// Biais intraday : séance de New York (9 h 30 - 16 h), voir _shared/sessions.ts. Modes :
+// « auto » (pg_cron, 9 h 05 heure de New York), « manuel » (bouton, limité par utilisateur
+// côté serveur), « historique » (règles rejouées sur un trimestre).
 import { servirTacheProtegee } from "../_shared/garde.ts";
 import { json } from "../_shared/http.ts";
 import { executerTache } from "../_shared/journal.ts";
 import { type Famille, SENS_ACTIONS } from "../_shared/publications.ts";
-import { debutSessionPrecedente, LIBELLES_SESSIONS, type Session, SESSIONS, sessionVisee } from "../_shared/sessions.ts";
+import { debutPublications, type Session } from "../_shared/sessions.ts";
 import { admin } from "../_shared/supabase.ts";
 import {
   combiner,
@@ -137,11 +137,11 @@ async function calculerHistorique(annee: number, trimestre: number | null) {
 
 // ---------------------------------------------------------------------------- Biais du jour
 
-async function calculerJour(origine: "auto" | "manuel", sessionDemandee: Session | null) {
+async function calculerJour(origine: "auto" | "manuel") {
   const db = admin();
   const maintenant = new Date();
   const seance = seanceVisee(maintenant);
-  const session = sessionDemandee ?? sessionVisee(maintenant, seance);
+  const session: Session = "new_york";
   const aujourdhui = maintenant.toISOString().slice(0, 10);
   const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions, dollar: rDollar } = REGLES_BIAIS;
   const indices = Object.keys(REGLES_BIAIS.indices) as CleIndice[];
@@ -191,7 +191,7 @@ async function calculerJour(origine: "auto" | "manuel", sessionDemandee: Session
     devise: c.devise, libelle: c.libelle, publie: Number(c.publie), prevision: Number(c.prevision), unite: c.unite,
     surprise: Number(c.surprise), instant: c.instant,
   }));
-  const depuis = debutSessionPrecedente(seance, session);
+  const depuis = debutPublications(seance);
   const surprises: SurpriseConsensus[] = (consensus.data ?? []).filter((c) => c.devise === "USD").map((c) => ({
     libelle: c.libelle, publie: Number(c.publie), prevision: Number(c.prevision), unite: c.unite, surprise: Number(c.surprise),
     sens: SENS_ACTIONS[c.famille as Famille] ?? 0, instant: c.instant,
@@ -252,7 +252,7 @@ async function calculerJour(origine: "auto" | "manuel", sessionDemandee: Session
     throw new Error(`Aucun biais publié : ${Object.entries(bilan).map(([i, b]) => `${i} ${b}`).join(" ; ")}`);
   }
   return {
-    message: `Séance du ${seance}, session ${LIBELLES_SESSIONS[session][0]} (${origine}) : ${Object.entries(bilan).map(([i, b]) => `${i} ${b}`).join(" ; ")}`,
+    message: `Séance du ${seance}, intraday (${origine}) : ${Object.entries(bilan).map(([i, b]) => `${i} ${b}`).join(" ; ")}`,
     details: { seance, session, origine, bilan },
   };
 }
@@ -267,7 +267,6 @@ servirTacheProtegee(async (corps) => {
     return json(resultat, resultat.ok ? 200 : 500);
   }
   const origine = corps.mode === "manuel" ? "manuel" : "auto";
-  const session = SESSIONS.includes(corps.session as Session) ? corps.session as Session : null;
-  const resultat = await executerTache("calcul-biais", () => calculerJour(origine, session));
+  const resultat = await executerTache("calcul-biais", () => calculerJour(origine));
   return json(resultat, resultat.ok ? 200 : 500);
 });
