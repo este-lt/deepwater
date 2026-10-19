@@ -1,8 +1,7 @@
 // Biais quotidien du S&P 500 et du Nasdaq-100, calculé une seule fois pour tout le
-// monde à partir des données déjà en base (aucun appel d'API externe), uniquement sur
-// des données concrètes. Score : révision des anticipations de la Fed, surprises macro, peur
-// sur les options ; le reste (taux longs, régime, liquidité, dollar, courbe, conditions,
-// positionnement) est affiché comme contexte. Aucune analyse technique (voir regles.ts).
+// monde à partir des données déjà en base (aucun appel d'API externe) : l'analyse des
+// éléments de la liste « feux tricolores » (🔴 3, 🟠 2, 🟢 1), lus par ce qui change face aux
+// attentes. Aucune analyse technique (voir regles.ts).
 // Biais intraday : séance de New York (9 h 30 - 16 h), voir _shared/sessions.ts. Modes :
 // « auto » (pg_cron, 9 h 05 heure de New York), « manuel » (bouton, limité par utilisateur
 // côté serveur), « historique » (règles rejouées sur un trimestre).
@@ -20,6 +19,7 @@ import {
   facteurFed,
   facteurLiquidite,
   facteurMacro,
+  facteurPetrole,
   facteurPositionnement,
   facteurPublications,
   facteurRegimeMacro,
@@ -39,6 +39,8 @@ import { type CleIndice, REGLES_BIAIS } from "./regles.ts";
 const jourMoins = (jours: number) => new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
 const SERIES_CYCLE = { emplois: "NONFARM_PAYROLL", chomage: "UNEMPLOYMENT", pib: "REAL_GDP", cpi: "CPI", pce: "CORE_PCE" } as const;
 const SYMBOLES_LIQUIDITE = ["WALCL", "TGA", "RRP", "M2"];
+// Taux européen AAA à 10 ans (proche du Bund) et valeurs refuges.
+const SYMBOLES_MONDE = ["EU10Y", "XAU", "USDJPY", "USDCHF"];
 
 // Lecture paginée (PostgREST renvoie au plus 1000 lignes par requête).
 async function toutLire<T>(requete: (debut: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>, nom: string): Promise<T[]> {
@@ -67,12 +69,20 @@ async function lireSeries(ids: Map<string, string>, symboles: string[], du: stri
 }
 
 async function lireCot(codes: string[], du: string): Promise<Record<string, PositionCot[]>> {
-  const lignes = await toutLire<{ date: string; code: string; interet_ouvert: number; fonds_long: number; fonds_court: number }>(
-    (debut) => admin().from("positions_cot").select("date, code, interet_ouvert, fonds_long, fonds_court").in("code", codes).gte("date", du).order("date").range(debut, debut + 999),
+  const lignes = await toutLire<{ date: string; code: string; interet_ouvert: number; fonds_long: number; fonds_court: number; gerants_long: number | null; gerants_court: number | null }>(
+    (debut) =>
+      admin().from("positions_cot").select("date, code, interet_ouvert, fonds_long, fonds_court, gerants_long, gerants_court")
+        .in("code", codes).gte("date", du).order("date").range(debut, debut + 999),
     "du rapport COT",
   );
+  const nombre = (v: number | null) => (v === null ? undefined : Number(v));
   const cot: Record<string, PositionCot[]> = {};
-  for (const l of lignes) (cot[l.code] ??= []).push({ date: l.date, interet_ouvert: Number(l.interet_ouvert), fonds_long: Number(l.fonds_long), fonds_court: Number(l.fonds_court) });
+  for (const l of lignes) {
+    (cot[l.code] ??= []).push({
+      date: l.date, interet_ouvert: Number(l.interet_ouvert), fonds_long: Number(l.fonds_long), fonds_court: Number(l.fonds_court),
+      gerants_long: nombre(l.gerants_long), gerants_court: nombre(l.gerants_court),
+    });
+  }
   return cot;
 }
 
@@ -108,7 +118,7 @@ async function calculerHistorique(annee: number, trimestre: number | null) {
   const indices = Object.keys(REGLES_BIAIS.indices) as CleIndice[];
   const symboles = [...new Set([
     ...indices, "VIX", "VIX3M", "US1Y", "US2Y", "US3M", "US10Y", "US10R", "FFR", REGLES_BIAIS.risque.credit,
-    REGLES_BIAIS.conditions.serie, REGLES_BIAIS.dollar.serie, "WTI", ...SYMBOLES_LIQUIDITE,
+    REGLES_BIAIS.conditions.serie, REGLES_BIAIS.dollar.serie, REGLES_BIAIS.petrole.serie, ...SYMBOLES_LIQUIDITE, ...SYMBOLES_MONDE,
   ])];
   const ids = await idsTickers(symboles);
   const donnees: DonneesHistoriques = {
@@ -143,10 +153,11 @@ async function calculerJour(origine: "auto" | "manuel") {
   const seance = seanceVisee(maintenant);
   const session: Session = "new_york";
   const aujourdhui = maintenant.toISOString().slice(0, 10);
-  const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions, dollar: rDollar } = REGLES_BIAIS;
+  const { macro: rMacro, taux: rTaux, risque: rRisque, conditions: rConditions, dollar: rDollar, petrole: rPetrole } = REGLES_BIAIS;
   const indices = Object.keys(REGLES_BIAIS.indices) as CleIndice[];
   const symboles = [...new Set([
-    rRisque.credit, "VIX", "VIX3M", "US1Y", "US2Y", "FFR", "US10R", rConditions.serie, rDollar.serie, "WTI", ...SYMBOLES_LIQUIDITE,
+    rRisque.credit, "VIX", "VIX3M", "US1Y", "US2Y", "FFR", "US10R", rConditions.serie, rDollar.serie, rPetrole.serie,
+    ...SYMBOLES_LIQUIDITE, ...SYMBOLES_MONDE,
   ])];
 
   // Version des règles conservée telle quelle (traçabilité des pondérations).
@@ -211,13 +222,16 @@ async function calculerJour(origine: "auto" | "manuel") {
     const regles = REGLES_BIAIS.indices[indice];
     const r = combiner([
       facteurFed(indice, serie("US2Y"), serie("FFR"), decisions, aujourdhui, serie("US1Y")),
-      facteurTaux(indice, serieTaux, serie("US10R"), aujourdhui, "FRED (DGS10, DFII10)"),
+      facteurTaux(indice, serieTaux, serie("US10R"), aujourdhui, "FRED (DGS10, DFII10), BCE (courbe AAA)", serie("EU10Y")),
       facteurMacro(indice, [...dernieres.values()], aujourdhui, "FRED (BLS, BEA)", surprises),
-      facteurRegimeMacro(indice, seriesCycle, serie("WTI"), aujourdhui),
+      facteurRegimeMacro(indice, seriesCycle, serie(rPetrole.serie), aujourdhui),
       facteurLiquidite(indice, serie("WALCL"), serie("TGA"), serie("RRP"), serie("M2"), aujourdhui),
-      facteurDollar(indice, serie(rDollar.serie), aujourdhui),
+      facteurDollar(indice, serie(rDollar.serie), aujourdhui, serieTaux, serie("EU10Y")),
+      facteurPetrole(indice, serie(rPetrole.serie), aujourdhui),
       facteurCourbe(indice, courts("3month"), courts("2year"), serieTaux, aujourdhui),
-      facteurRisque(indice, serie("VIX"), serie("VIX3M"), aujourdhui, serie(rRisque.credit)),
+      facteurRisque(indice, serie("VIX"), serie("VIX3M"), aujourdhui, serie(rRisque.credit), {
+        or: serie("XAU"), usdjpy: serie("USDJPY"), usdchf: serie("USDCHF"),
+      }),
       facteurConditions(indice, serie(rConditions.serie), aujourdhui),
       facteurPositionnement(indice, cot[regles.cot] ?? [], aujourdhui),
       facteurPublications(indice, toutes, depuis, maintenant.toISOString()),

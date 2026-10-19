@@ -1,55 +1,71 @@
-// Règles du biais quotidien : fichier de configuration modifiable.
-// Uniquement des données fondamentales et de marché concrètes : aucun indicateur ni concept
-// d'analyse technique (ni moyenne mobile, ni momentum, ni niveau de prix).
-// Chaque facteur donne une note entre -1 (baissier) et +1 (haussier). Le score final
-// est la moyenne pondérée des facteurs disponibles ; un facteur sans donnée récente
-// est marqué « indisponible » et son poids est retiré du calcul (jamais de valeur inventée).
+// Règles du biais intraday (S&P 500, Nasdaq-100) : fichier de configuration modifiable.
 //
-// Version d (19/10/2026), fondée sur la mesure : chaque facteur a été rejoué de 2021 à 2026
-// et comparé aux séances suivantes, séparément sur 2021-2023 et 2024-2026. Seuls trois
-// facteurs annoncent la séance dans le même sens sur les deux périodes et les deux indices :
-// la révision des anticipations de la Fed (taux à 1 et 2 ans sur 5 séances), les surprises
-// macro et la peur mesurée par les options (VIX face à sa médiane, VIX / VIX3M), qui
-// précède en moyenne une hausse. Les niveaux (hausses déjà anticipées, inflation, taux réel)
-// sont déjà dans les prix et rendaient le biais baissier pendant des mois de hausse ; le
-// dollar, la courbe, les conditions financières, la liquidité et le COT n'annoncent rien de
-// stable sur la séance. Ils restent affichés comme contexte, avec un poids nul.
+// Le biais est l'analyse des informations de la liste « feux tricolores » de l'utilisateur :
+// 🔴 prioritaire, 🟠 secondaire, 🟢 complémentaire. Chaque élément de la liste disponible en
+// base donne une note entre -1 (baissier) et +1 (haussier), pondérée par sa couleur
+// (🔴 3, 🟠 2, 🟢 1). Le score est la moyenne pondérée des facteurs disponibles ; un facteur
+// sans donnée récente est « indisponible » et son poids est retiré (jamais de valeur inventée).
+//
+// Lecture « priced in » (🔴 Mécanisme d'anticipation, Notion de « Priced In », Misprice &
+// Repricing) : ce qui compte est ce qui change par rapport à ce que le marché attendait
+// (surprise face au consensus, révision des anticipations, variation récente), pas le
+// niveau, déjà dans les prix. Les niveaux restent cités dans les explications.
+//
+// Aucune analyse technique (ni moyenne mobile, ni momentum, ni niveau de prix des indices).
+// Éléments de la liste sans donnée gratuite en base, donc absents du calcul : projections
+// (SEP) et déclarations du FOMC, « buy the rumor, sell the news », événements géopolitiques,
+// politique fiscale et dette, rotations sectorielles, sentiment des particuliers, ratios de
+// valorisation (CAPE, Price to Book, Market Cap / M2).
 //
 // Après modification : relancer les tests (deno test supabase/functions/calcul-biais),
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
-export const REGLES_BIAIS = {
-  version: "2026-10-19d",
+export type Priorite = "rouge" | "orange" | "vert" | "contexte";
+export const VALEURS_PRIORITE: Record<Priorite, number> = { rouge: 3, orange: 2, vert: 1, contexte: 0 };
 
-  // Conversion du score (entre -1 et +1) en biais. Seuils asymétriques : le marché monte
-  // environ 55 % des séances, un biais baissier n'est juste que sur un score très négatif
-  // (2021-2026 : score >= +0,2 suivi d'une hausse 55 à 65 % du temps ; score <= -0,45
-  // suivi d'une baisse 62 % du temps ; entre -0,45 et -0,2, la baisse n'était pas plus
-  // probable que la hausse).
-  seuils: { haussier: 0.2, baissier: -0.45 },
+export type CleFacteur =
+  | "fed" | "macro" | "taux" | "dollar" | "petrole" | "liquidite" | "cycle"
+  | "risque" | "courbe" | "positionnement" | "conditions" | "publications";
+
+// Couleur de chaque facteur : la plus haute des éléments de la liste qu'il analyse.
+export const PRIORITES: Record<CleFacteur, Priorite> = {
+  fed: "rouge", // 🔴 taux directeurs, postures hawkish / dovish ; 🟠 anticipations de taux, mandat
+  macro: "rouge", // 🔴 CPI, PCE, PIB, NFP, chômage ; 🟠 PPI, salaires, PMI, ventes au détail, consensus
+  taux: "rouge", // 🔴 obligations d'État (Treasuries, Bunds), yields ; 🟠 rendements réels
+  dollar: "rouge", // 🔴 indice dollar (DXY), yield spread (différentiel de taux)
+  petrole: "rouge", // 🔴 pétrole
+  liquidite: "rouge", // 🔴 masse monétaire M2 et liquidité ; 🟠 QE / QT
+  cycle: "rouge", // 🔴 régimes macroéconomiques ; 🟠 mandat ; 🟢 cycle économique
+  risque: "orange", // 🟠 sentiment risk-on / risk-off, actifs refuges (or, yen, franc suisse)
+  courbe: "orange", // 🟠 inversion de la courbe des taux
+  positionnement: "vert", // 🟢 COT, positionnement des institutionnels
+  conditions: "contexte", // hors liste : affiché seulement
+  publications: "contexte", // chiffres de la nuit, toutes économies (les américains sont dans « macro »)
+};
+
+const CLES = Object.keys(PRIORITES) as CleFacteur[];
+const TOTAL = CLES.reduce((s, k) => s + VALEURS_PRIORITE[PRIORITES[k]], 0);
+// Poids normalisés (somme 1) : 🔴 3/26, 🟠 2/26, 🟢 1/26.
+const POIDS = Object.fromEntries(CLES.map((k) => [k, VALEURS_PRIORITE[PRIORITES[k]] / TOTAL])) as Record<CleFacteur, number>;
+
+export const REGLES_BIAIS = {
+  version: "2026-10-20b",
+
+  // Conversion du score (entre -1 et +1) en biais.
+  seuils: { haussier: 0.2, baissier: -0.2 },
 
   // Le biais n'est publié que si au moins cette part du poids total est disponible.
   partPoidsMinimale: 0.5,
 
   indices: {
-    SPX: {
-      libelle: "S&P 500",
-      // Poids nul : facteur affiché comme contexte, hors score.
-      poids: { fed: 0.3, macro: 0.3, risque: 0.4, taux: 0, cycle: 0, liquidite: 0, dollar: 0, courbe: 0, conditions: 0, positionnement: 0, publications: 0 },
-      // Contrat à terme du rapport COT de la CFTC (positionnement).
-      cot: "13874A",
-    },
-    NDX: {
-      libelle: "Nasdaq-100",
-      // Mêmes poids : la mesure ne justifie aucune différence entre les deux indices.
-      poids: { fed: 0.3, macro: 0.3, risque: 0.4, taux: 0, cycle: 0, liquidite: 0, dollar: 0, courbe: 0, conditions: 0, positionnement: 0, publications: 0 },
-      cot: "209742",
-    },
+    // Mêmes poids pour les deux indices : ceux de la liste.
+    SPX: { libelle: "S&P 500", poids: POIDS, cot: "13874A" },
+    NDX: { libelle: "Nasdaq-100", poids: POIDS, cot: "209742" },
   },
 
-  // Anticipations de la Fed : révision sur 5 séances de la moyenne des taux à 1 et 2 ans.
-  // Des anticipations qui montent (plus de hausses ou moins de baisses) = baissier. Le niveau
-  // face aux Fed funds et la dernière décision sont affichés, sans entrer dans la note.
+  // Politique monétaire : révision sur 5 séances de la moyenne des taux à 1 et 2 ans (ce que
+  // le marché change dans ses anticipations de la Fed). Plus hawkish = baissier. Le niveau face
+  // aux Fed funds et la dernière décision sont déjà dans les prix : cités, hors note.
   fed: {
     seancesVariation: 5,
     variationPleinePts: 0.15, // +15 pb en 5 séances -> note -1
@@ -57,24 +73,23 @@ export const REGLES_BIAIS = {
     ageMaxJours: 7,
   },
 
-  // Taux longs : le coût de l'argent pèse sur les actions, par son évolution récente (taux
-  // nominal et taux réel à 10 ans sur 5 séances) et par son niveau (taux réel à 10 ans,
-  // obligations indexées sur l'inflation, face à un repère neutre fixe).
+  // Obligations d'État : variation sur 5 séances du 10 ans américain (50 %), du taux réel à
+  // 10 ans (25 %) et du taux européen AAA à 10 ans (courbe de la BCE, proche du Bund, 25 %).
+  // Des rendements qui montent = baissier.
   taux: {
     maturite: "10year",
     libelle: "Taux à 10 ans",
     libelle_en: "10-year yield",
     seancesVariation: 5,
-    variationPleinePts: 0.2, // +0,20 pt en 5 séances -> note -1
-    partNominal: 0.6, // dans la note de variation
-    reelNeutre: 1.5, // taux réel à 10 ans jugé neutre (%)
-    ecartPleinNiveauPts: 1, // taux réel 1 pt au-dessus du repère -> note de niveau -1
-    partNiveau: 0.5, // part du niveau dans la note du facteur (le reste : la variation)
+    variationPleinePts: 0.15, // +0,15 pt en 5 séances -> note -1
+    partUs: 0.5,
+    partReel: 0.25,
+    partBund: 0.25,
     ageMaxJours: 7,
   },
 
-  // Surprise macro : écart au consensus des chiffres américains publiés (fil instantané) et
-  // écart de la dernière publication FRED par rapport à la précédente.
+  // Statistiques face au consensus : chiffres américains publiés (fil instantané) et écart de
+  // la dernière publication FRED par rapport à la précédente.
   // sens : +1 si une hausse est favorable aux actions, -1 si elle est défavorable.
   macro: {
     fenetreJours: 45,
@@ -96,8 +111,8 @@ export const REGLES_BIAIS = {
   // Régime macroéconomique (croissance × inflation : expansion, reflation, déflation,
   // stagflation). Croissance : emplois créés (moyenne sur 3 mois), évolution du chômage sur
   // 3 mois, PIB annualisé. Inflation : PCE sous-jacent face à la cible de 2 % de la Fed
-  // (mandat), accélération du CPI sur 3 mois, pétrole sur 3 mois (anticipation). Les actions
-  // aiment la croissance et craignent l'inflation : note = 0,6 x croissance - 0,4 x inflation.
+  // (mandat), accélération du CPI sur 3 mois, pétrole sur 3 mois. Les actions aiment la
+  // croissance et craignent l'inflation : note = 0,6 x croissance - 0,4 x inflation.
   cycle: {
     emploisNeutresK: 100, // emplois créés par mois jugés neutres (milliers)
     emploisPleinsK: 100, // écart à ce niveau qui donne une note pleine
@@ -115,14 +130,24 @@ export const REGLES_BIAIS = {
     ageMaxJoursPetrole: 10,
   },
 
-  // Dollar (indice large de la Fed, DXY) : contexte seulement. Dollar et actions évoluent
-  // souvent en sens inverse le même jour, mais aucun effet stable n'a été mesuré sur la
-  // séance suivante (2021-2026).
+  // Dollar : variation de l'indice large de la Fed (DXY) sur 20 séances (70 %) et du
+  // différentiel de taux à 10 ans États-Unis - zone euro AAA (30 %). Un dollar qui monte, ou
+  // un écart qui se creuse en faveur du dollar, pèse sur les actions.
   dollar: {
     serie: "DXY",
     seancesVariation: 20,
     variationPleinePct: 2, // +2 % en 20 séances -> note -1
+    ecartPleinPts: 0.3, // écart +0,30 pt en 20 séances -> note -1
+    partDxy: 0.7,
     ageMaxJours: 14, // série publiée chaque semaine
+  },
+
+  // Pétrole (WTI) sur 20 séances : une hausse nourrit l'inflation et pèse sur les marges.
+  petrole: {
+    serie: "WTI",
+    seancesVariation: 20,
+    variationPleinePct: 15, // +15 % en 20 séances -> note -1
+    ageMaxJours: 10,
   },
 
   // Courbe des taux : une courbe inversée (taux courts au-dessus du 10 ans) annonce
@@ -134,42 +159,50 @@ export const REGLES_BIAIS = {
     ageMaxJours: 7,
   },
 
-  // Liquidité de la Fed : liquidité nette (bilan de la Fed moins compte du Trésor moins
-  // prises en pension inversées) sur 4 semaines, et croissance de la masse monétaire M2.
+  // Liquidité : liquidité nette (bilan de la Fed moins compte du Trésor moins prises en
+  // pension inversées) sur 4 semaines (QE / QT compris), et croissance de M2.
   liquidite: {
     semaines: 4,
     variationPleineMd: 150, // +150 Md$ de liquidité nette en 4 semaines -> note +1
     m2Neutre: 4, // croissance de M2 sur 1 an jugée neutre (%)
     m2Plein: 4,
     partNette: 0.7,
+    bilanSeuilMd: 25, // bilan de la Fed qui varie de moins de 25 Md$ en 4 semaines : stable
     ageMaxJours: 14,
     ageMaxJoursM2: 95, // M2 d'un mois paraît environ quatre semaines après sa fin
   },
 
-  // Positionnement (rapport COT de la CFTC) : position nette des fonds à effet de levier en
-  // part de l'intérêt ouvert, comparée à ses 3 dernières années. Contexte seulement : la
-  // lecture contrarienne (très acheteurs = baissier) a été démentie par la mesure 2024-2026.
+  // Positionnement (rapport COT de la CFTC) : variation sur 4 semaines de la position nette
+  // des gérants d'actifs (institutionnels), en contrats, rapportée à l'intérêt ouvert actuel.
+  // Des institutionnels qui renforcent leurs achats = haussier. Les fonds à effet de levier
+  // sont cités.
   positionnement: {
+    semainesVariation: 4,
+    variationPleine: 0.03, // +3 points de l'intérêt ouvert en 4 semaines -> note +1
     semainesHistorique: 156,
-    ecartPlein: 0.4, // centile 90 % (0,5 + 0,4) -> note -1
     ageMaxJours: 14,
   },
 
-  // Peur sur les options (VIX, pour les deux indices) : VIX face à sa médiane d'un an et
-  // structure VIX / VIX3M. Une peur au-dessus de la normale a été suivie en moyenne d'une
-  // hausse (2021-2026, les deux périodes, les deux indices) : note positive. Le spread de
-  // crédit à haut rendement est affiché, sans entrer dans la note.
+  // Sentiment risk-on / risk-off : volatilité implicite (VIX face à sa médiane d'un an et sur
+  // 5 séances, 35 %), structure VIX / VIX3M (15 %), spread de crédit à haut rendement sur
+  // 5 séances (25 %), demande de valeurs refuges sur 5 séances (or, yen, franc suisse, 25 %).
+  // Risk-off = baissier.
   risque: {
+    seancesVariation: 5,
     joursMediane: 365,
-    ecartPleinVolPts: 8, // VIX 8 points au-dessus de sa médiane -> moitié de note +1
+    ecartPleinVolPts: 8, // VIX 8 points au-dessus de sa médiane -> note -1
+    variationPleineVolPts: 5, // +5 points en 5 séances -> note -1
     structureNeutre: 0.9, // VIX / VIX3M habituel
-    structurePleine: 0.15, // ratio 1,05 -> moitié de note +1 ; 0,75 -> moitié de note -1
+    structurePleine: 0.15, // ratio 1,05 -> note -1 ; 0,75 -> note +1
     credit: "HY",
+    variationPleineCreditPts: 0.4, // spread +0,40 pt en 5 séances -> note -1
+    refugeOrPct: 3, // or +3 % en 5 séances -> refuge plein
+    refugeDevisePct: 2, // yen ou franc suisse +2 % face au dollar en 5 séances -> refuge plein
+    parts: { volatilite: 0.35, structure: 0.15, credit: 0.25, refuges: 0.25 },
     ageMaxJours: 7,
   },
 
-  // Conditions financières (indice NFCI de la Fed de Chicago, hebdomadaire) : au-dessus de
-  // zéro, plus tendues que la moyenne ; un resserrement sur 4 semaines est baissier.
+  // Conditions financières (indice NFCI de la Fed de Chicago) : hors liste, affiché seulement.
   conditions: {
     serie: "NFCI",
     niveauPlein: 0.5,
@@ -181,4 +214,3 @@ export const REGLES_BIAIS = {
 };
 
 export type CleIndice = keyof typeof REGLES_BIAIS.indices;
-export type CleFacteur = "fed" | "taux" | "macro" | "cycle" | "liquidite" | "dollar" | "courbe" | "risque" | "conditions" | "positionnement" | "publications";

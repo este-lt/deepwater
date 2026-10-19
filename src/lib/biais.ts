@@ -8,6 +8,8 @@ export interface FacteurBiais {
   libelle: string;
   libelle_en?: string;
   texte_en?: string;
+  // Couleur de la liste « feux tricolores » (règles 2026-10-20a et suivantes).
+  priorite?: "rouge" | "orange" | "vert" | "contexte";
   statut: "ok" | "indisponible";
   note: number | null;
   poids: number;

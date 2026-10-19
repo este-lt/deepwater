@@ -221,47 +221,64 @@ Sur iPhone : Safari, Partager, « Sur l'écran d'accueil » ouvre Deepwater en p
 Scoring automatique basé sur des règles, pas une prédiction garantie ni un conseil en
 investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
-Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026, version d).
+Uniquement des données concrètes, aucune analyse technique (règles du 20/10/2026,
+version `2026-10-20b`).
 
-### Ce qui a été corrigé (version d)
+### Méthode : l'analyse de la liste à feux tricolores
 
-Les versions a à c additionnaient des facteurs choisis a priori. Rejouées de 2021 à 2026,
-elles laissaient le biais baissier pendant des mois de hausse (toute l'année 2021, 2026)
-et neutre pendant 2024 (+23 %). Mesure faite facteur par facteur (corrélation avec la
-séance suivante, séparément sur 2021-2023 et 2024-2026, S&P 500 et Nasdaq-100) :
+Le biais est l'analyse des informations de la liste de l'utilisateur. Chaque élément
+disponible en base donne une note de −1 (baissier) à +1 (haussier), pondérée par sa couleur :
+🔴 3, 🟠 2, 🟢 1. Le score est la moyenne pondérée des facteurs disponibles. Haussier dès
++0,2, baissier sous −0,2.
 
-- **sens inversé** : la peur sur les options (VIX au-dessus de sa médiane, structure
-  VIX / VIX3M tendue) a été suivie en moyenne d'une **hausse** ; le dollar en hausse
-  aussi ; la lecture contrarienne du COT est démentie sur 2024-2026 ;
-- **sans pouvoir stable** : courbe des taux, conditions financières, liquidité, niveau du
-  taux réel, régime macro (les niveaux sont déjà dans les prix) ;
-- **sens confirmé sur les deux périodes** : révision des anticipations de la Fed (taux à
-  1 et 2 ans sur 5 séances), surprises macro.
+Lecture « priced in » (🔴 mécanisme d'anticipation, « priced in », misprice et repricing) :
+ce qui compte est ce qui change face aux attentes (surprise face au consensus, révision des
+anticipations, variation récente), pas le niveau, déjà dans les prix. Les niveaux restent
+cités dans les explications. Chaque élément est lu de façon classique.
 
-| Facteur du score | Donnée | Poids |
-|---|---|---|
-| Anticipations de la Fed | révision sur 5 séances de la moyenne des taux à 1 et 2 ans (+15 pb = note −1) ; le niveau face aux Fed funds et la dernière décision sont affichés, hors note | 30 % |
-| Surprise macro | chiffres américains face au consensus sur 30 jours (60 %) et publications FRED face aux précédentes (40 %) | 30 % |
-| Peur sur les options | VIX face à sa médiane d'un an et VIX / VIX3M (0,9 neutre) : une peur au-dessus de la normale est **haussière** | 40 % |
+| Couleur | Facteur | Éléments de la liste | Donnée et lecture |
+|---|---|---|---|
+| 🔴 | Anticipations de la Fed | taux directeurs, hawkish / dovish ; 🟠 anticipations de taux, mandat | révision sur 5 séances des taux à 1 et 2 ans (+15 pb = −1) ; niveau face aux Fed funds et dernière décision cités |
+| 🔴 | Statistiques face au consensus | CPI, PCE, PIB, NFP, chômage ; 🟠 PPI, salaires, PMI, ventes au détail, consensus | surprises face au consensus sur 30 jours (60 %), publications FRED face aux précédentes (40 %) |
+| 🔴 | Obligations d'État | Treasuries, Bunds, yields ; 🟠 rendements réels | variation sur 5 séances du 10 ans US (50 %), du réel (25 %), du taux européen AAA (BCE, proche du Bund, 25 %) : hausse = baissier |
+| 🔴 | Dollar et différentiel de taux | DXY, yield spread | indice large du dollar sur 20 séances (70 %), écart 10 ans US − zone euro (30 %) : dollar qui monte = baissier |
+| 🔴 | Pétrole | WTI / Brent | WTI sur 20 séances (+15 % = −1) |
+| 🔴 | Liquidité | M2 et liquidité mondiale ; 🟠 QE / QT | liquidité nette de la Fed sur 4 semaines (70 %), M2 sur 1 an (30 %) ; bilan cité (QE, QT ou stable au-delà de 25 Md$) |
+| 🔴 | Régime macroéconomique | régimes ; 🟢 cycle, indicateurs avancés / retardés | croissance (emplois, chômage, PIB) × inflation (PCE face à 2 %, CPI, pétrole sur 3 mois) |
+| 🟠 | Sentiment risk-on / risk-off | risk-on / risk-off, valeurs refuges (or, yen, franc suisse) | VIX (35 %), VIX / VIX3M (15 %), spread haut rendement (25 %), refuges sur 5 séances (25 %) : risk-off = baissier |
+| 🟠 | Courbe des taux | inversion de la courbe | 10 ans − 2 ans et 10 ans − 3 mois : inversion = baissier |
+| 🟢 | Positionnement des institutionnels | COT, banques et institutionnels | contrats nets des gérants d'actifs sur 4 semaines, rapportés à l'intérêt ouvert actuel (le roulement trimestriel gonfle l'intérêt ouvert) |
 
-Contexte affiché, poids nul : taux longs, régime macroéconomique, liquidité de la Fed,
-dollar, courbe des taux, conditions financières, positionnement COT, et chiffres publiés
-depuis la session précédente (toutes économies).
+Hors score, affichés comme contexte : conditions financières (NFCI, hors liste) et chiffres
+publiés depuis la dernière clôture de New York (toutes économies ; les américains sont déjà
+dans les statistiques). Sans donnée gratuite en base, donc non comptés : projections (SEP)
+et discours du FOMC, « buy the rumor, sell the news », géopolitique, politique fiscale et
+dette, rotations sectorielles, sentiment des particuliers, ratios de valorisation.
 
-Seuils asymétriques : haussier dès +0,2, baissier seulement sous −0,45 (le marché monte
-environ 55 % des séances ; entre −0,45 et −0,2, la baisse n'était pas plus probable).
+Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais avec moins de
+la moitié du poids. Calcul unique pour tous, depuis la base seulement. Chaque version des
+règles est enregistrée telle quelle (`regles_versions`, page Admin).
 
-Résultat rejoué (2021-2026, séance de clôture à clôture) : haussier juste 56 % (S&P 500,
-2021-2023, base 52,5 %) et 62 % (2024-2026, base 55,5 %) ; Nasdaq-100 63 % et 65 % (bases
-54 % et 57 %) ; baissier juste 62,5 % (24 séances, 2022), jamais déclenché sur 2024-2026.
-Corrélation du score avec la séance : +0,10 à +0,11 sur chaque période (versions a à c :
-proche de zéro ou négative sur 2024-2026). Les signes ont été choisis parce qu'ils sont
-identiques sur les deux périodes ; la vraie validation reste le suivi en direct.
+### Résultat rejoué (version 2026-10-20b, clôture à clôture)
 
-Note de −1 à +1 par facteur, moyenne pondérée. Facteur sans donnée récente :
-« indisponible », poids retiré ; pas de biais avec moins de la moitié du poids. Calcul
-unique pour tous, depuis la base seulement. Chaque version des règles est enregistrée
-telle quelle (`regles_versions`, page Admin).
+| | Séances | Hausse spontanée | Haussier juste | Baissier juste | Corrélation score / séance |
+|---|---|---|---|---|---|
+| S&P 500 2021-2023 | 753 | 51,5 % | 59,9 % (152) | 55,2 % (181) | +0,09 |
+| S&P 500 2024-2026 | 701 | 55,5 % | 54,7 % (53) | 44,5 % (137) | +0,03 |
+| Nasdaq-100 2021-2023 | 753 | 53,0 % | 55,0 % (151) | 51,9 % (181) | +0,07 |
+| Nasdaq-100 2024-2026 | 700 | 57,0 % | 61,8 % (55) | 43,2 % (139) | +0,04 |
+
+Lecture franche : l'analyse de la liste annonçait bien la séance en 2021-2023 (marché mené
+par l'inflation et les hausses de taux). En 2024-2026, elle est à peine meilleure que le
+hasard, et ses biais baissiers ne le sont pas du tout : le marché a monté malgré des taux,
+un dollar ou un pétrole en hausse. Facteur par facteur (S&P 500), seuls les anticipations de la
+Fed, les statistiques face au consensus et le pétrole vont dans le bon sens sur les deux
+périodes. Les obligations d'État ne marchent que sur 2021-2023. Le dollar et la courbe vont
+légèrement à contre-sens sur les deux périodes. Le COT des gérants n'existe en base que
+depuis septembre 2023.
+
+La version d (19/10/2026), calée sur ces statistiques, faisait mieux sur 2024-2026. Elle
+mettait cependant à zéro la plupart des 🔴 de la liste : l'utilisateur l'a écartée.
 
 ### Biais intraday
 
@@ -273,7 +290,7 @@ suivante). Le contexte liste les chiffres publiés face au consensus depuis la d
 clôture de New York (nuit asiatique et européenne comprises). Les biais Asie et Londres
 essayés le 19/10/2026 ont été retirés à la demande de l'utilisateur.
 
-Le rejeu ci-dessous juge le biais de clôture à clôture (seules clôtures disponibles sur
+Le rejeu ci-dessus juge le biais de clôture à clôture (seules clôtures disponibles sur
 FRED). Pour le juger en intraday, `collecte-sessions` lit les barres de 30 minutes des
 contrats ES et NQ chez **Massive** (offre gratuite « Futures Basic » : données décalées de
 8 heures, 2 ans d'historique, 5 appels par minute ; contrat le plus proche, roulement le

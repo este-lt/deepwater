@@ -16,7 +16,7 @@ const SOURCES: Record<string, [string, string]> = {
   "FRED (DGS2, DFF), BRI": ["FRED (taux à 2 ans, Fed funds), BRI", "FRED (2-year yield, Fed funds), BIS"],
   "FRED (DGS1, DGS2, DFF), BRI": ["FRED (taux à 1 et 2 ans, Fed funds), BRI", "FRED (1- and 2-year yields, Fed funds), BIS"],
   "FRED (WALCL, WTREGEN, RRPONTSYD, M2SL)": ["FRED (bilan de la Fed, compte du Trésor, prises en pension, M2)", "FRED (Fed balance sheet, Treasury account, reverse repos, M2)"],
-  "CFTC (Traders in Financial Futures)": ["CFTC (rapport COT, fonds à effet de levier)", "CFTC (COT report, leveraged funds)"],
+  "CFTC (Traders in Financial Futures)": ["CFTC (rapport COT : gérants d'actifs, fonds à effet de levier)", "CFTC (COT report: asset managers, leveraged funds)"],
   "FRED (BLS, BEA)": ["FRED (BLS, BEA)", "FRED (BLS, BEA)"],
   "FRED (BLS, BEA), consensus (FinancialJuice, InvestingLive)": ["FRED (BLS, BEA) et consensus (FinancialJuice, InvestingLive)", "FRED (BLS, BEA) and consensus (FinancialJuice, InvestingLive)"],
   "FRED (DGS10, DFII10)": ["FRED (taux nominal et réel à 10 ans)", "FRED (10-year nominal and real yields)"],
@@ -27,10 +27,26 @@ const SOURCES: Record<string, [string, string]> = {
   "FRED (VIX, spread haut rendement ICE BofA)": ["FRED (VIX, spread haut rendement ICE BofA)", "FRED (VIX, ICE BofA high-yield spread)"],
   "FRED (VXN, spread haut rendement ICE BofA)": ["FRED (VXN, spread haut rendement ICE BofA)", "FRED (VXN, ICE BofA high-yield spread)"],
   "FRED (VIXCLS, VXVCLS, spread haut rendement ICE BofA)": ["FRED (VIX, VIX à 3 mois, spread haut rendement ICE BofA)", "FRED (VIX, 3-month VIX, ICE BofA high-yield spread)"],
+  "FRED (VIXCLS, VXVCLS, spread haut rendement ICE BofA), or, USD/JPY, USD/CHF": [
+    "FRED (VIX, VIX à 3 mois, spread haut rendement ICE BofA), or, yen et franc suisse",
+    "FRED (VIX, 3-month VIX, ICE BofA high-yield spread), gold, yen and Swiss franc",
+  ],
+  "FRED (DGS10, DFII10), BCE (courbe AAA)": ["FRED (taux nominal et réel à 10 ans), BCE (taux européen AAA à 10 ans)", "FRED (10-year nominal and real yields), ECB (10-year euro AAA yield)"],
+  "FRED (DTWEXBGS, DGS10), BCE (courbe AAA zone euro)": ["FRED (indice large du dollar, taux à 10 ans), BCE (taux européen AAA)", "FRED (broad dollar index, 10-year yield), ECB (euro AAA yield)"],
+  "FRED (DCOILWTICO)": ["FRED (pétrole WTI)", "FRED (WTI crude oil)"],
 };
-// Seuils des règles en vigueur (supabase/functions/calcul-biais/regles.ts) : asymétriques.
+// Couleur de chaque facteur dans la liste « feux tricolores » : 🔴 prioritaire (poids 3),
+// 🟠 secondaire (2), 🟢 complémentaire (1).
+const PRIORITES = {
+  rouge: { emoji: "🔴", ordre: 0, fr: "Priorité 🔴 (poids 3)", en: "Priority 🔴 (weight 3)" },
+  orange: { emoji: "🟠", ordre: 1, fr: "Priorité 🟠 (poids 2)", en: "Priority 🟠 (weight 2)" },
+  vert: { emoji: "🟢", ordre: 2, fr: "Priorité 🟢 (poids 1)", en: "Priority 🟢 (weight 1)" },
+  contexte: { emoji: "⚪", ordre: 3, fr: "Hors liste, contexte", en: "Not on the list, context" },
+} as const;
+const priorite = (f: FacteurBiais) => (f.priorite ? PRIORITES[f.priorite] : null);
+// Seuils des règles en vigueur (supabase/functions/calcul-biais/regles.ts).
 const SEUIL_HAUSSIER = 0.2;
-const SEUIL_BAISSIER = -0.45;
+const SEUIL_BAISSIER = -0.2;
 const libelleSource = (s: string, en: boolean) => SOURCES[s]?.[en ? 1 : 0] ?? s;
 // Texte d'un facteur dans la langue de l'utilisateur (anglais quand le calcul l'a produit).
 const texteFacteur = (f: FacteurBiais, en: boolean) => (en && f.texte_en ? f.texte_en : f.texte);
@@ -67,10 +83,14 @@ function LigneFacteur({ f }: { f: FacteurBiais }) {
   const en = langue === "en";
   const largeur = f.note === null ? 0 : Math.abs(f.note) * 50;
   const contexte = f.poids === 0;
+  const p = priorite(f);
   return (
     <li className="flex flex-col gap-1 py-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-        <span className={contexte ? "text-attenue" : "font-medium"}>{en && f.libelle_en ? f.libelle_en : f.libelle}</span>
+        <span className={contexte ? "text-attenue" : "font-medium"}>
+          {p && <span role="img" aria-label={en ? p.en : p.fr} title={en ? p.en : p.fr} className="mr-1.5 text-xs">{p.emoji}</span>}
+          {en && f.libelle_en ? f.libelle_en : f.libelle}
+        </span>
         <span className="chiffres text-xs text-attenue">
           {f.statut !== "ok" || f.note === null
             ? <span className="text-alerte">{t("indisponible", "unavailable")}</span>
@@ -137,9 +157,11 @@ export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: 
         <ol className="flex flex-col gap-1.5 text-sm">
           {biais.raisons.map((r, i) => {
             const facteur = biais.facteurs.find((f) => f.texte === r);
+            const p = facteur ? priorite(facteur) : null;
             return (
               <li key={i} className="flex gap-2">
                 <span className="chiffres mt-0.5 text-xs text-discret">{i + 1}.</span>
+                {p && <span role="img" aria-label={en ? p.en : p.fr} title={en ? p.en : p.fr} className="mt-0.5 text-xs">{p.emoji}</span>}
                 <span>
                   {facteur ? texteFacteur(facteur, en) : r}{" "}
                   {facteur && <span className="text-xs text-discret">{t("Source :", "Source:")} {libelleSource(facteur.source, en)}</span>}
@@ -155,7 +177,10 @@ export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: 
           <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span> {t(`Détail des ${biais.facteurs.length} facteurs`, `Details of the ${biais.facteurs.length} factors`)}
         </summary>
         <ul className="mt-1 flex flex-col divide-y divide-bordure">
-          {biais.facteurs.filter((f) => f.poids > 0).map((f) => (
+          {biais.facteurs
+            .filter((f) => f.poids > 0)
+            .sort((a, b) => (priorite(a)?.ordre ?? 0) - (priorite(b)?.ordre ?? 0))
+            .map((f) => (
             <LigneFacteur key={f.cle} f={f} />
           ))}
         </ul>
@@ -164,8 +189,8 @@ export function CarteBiais({ biais, delai = 0 }: { biais: BiaisAffiche; delai?: 
             <h4 className="mt-3 text-xs font-medium uppercase tracking-wide text-discret">{t("Contexte, hors score", "Context, not scored")}</h4>
             <p className="text-[0.7rem] text-discret">
               {t(
-                "Rejoués sur 2021-2026, ces facteurs n'annoncent pas la séance de façon stable : ils décrivent le fond du marché sans entrer dans le score.",
-                "Replayed over 2021-2026, these factors do not reliably predict the session: they describe the market backdrop without entering the score.",
+                "Hors de votre liste ou déjà comptés ailleurs : affichés pour information, sans entrer dans le score.",
+                "Not on your list or already counted elsewhere: shown for information, without entering the score.",
               )}
             </p>
             <ul className="flex flex-col divide-y divide-bordure">

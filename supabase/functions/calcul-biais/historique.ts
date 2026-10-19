@@ -13,6 +13,7 @@ import {
   facteurFed,
   facteurLiquidite,
   facteurMacro,
+  facteurPetrole,
   facteurPositionnement,
   facteurRegimeMacro,
   facteurRisque,
@@ -55,7 +56,9 @@ export interface LigneHistorique {
 const arrondi4 = (v: number | null) => (v === null || !Number.isFinite(v) ? null : Math.round(v * 1e4) / 1e4);
 
 // Mesures brutes à la date d : variations et niveaux tels qu'ils étaient connus.
-function mesures(q: (cle: string, max: number) => PointTaux[], cot: { net: number }[]): Record<string, number | null> {
+function mesures(
+  q: (cle: string, max: number) => PointTaux[], cot: { net: number; gerants: number | null; contrats: number | null; oi: number }[],
+): Record<string, number | null> {
   const variation = (cle: string, n: number) => {
     const s = q(cle, n + 1);
     return s.length > n ? s[s.length - 1].taux - s[s.length - 1 - n].taux : null;
@@ -74,6 +77,21 @@ function mesures(q: (cle: string, max: number) => PointTaux[], cot: { net: numbe
   const v = vix.at(-1)?.taux ?? null;
   const v3 = dernier("VIX3M");
   const net = cot.at(-1)?.net;
+  const gerants = cot.at(-1)?.gerants ?? null;
+  // Variation des contrats nets des gérants sur 4 semaines, rapportée à l'intérêt ouvert actuel.
+  const contrats = cot.at(-1)?.contrats ?? null;
+  const contratsAvant = cot.at(-5)?.contrats ?? null;
+  const oi = cot.at(-1)?.oi ?? null;
+  // Écart de taux à 10 ans États-Unis - zone euro et sa variation sur 20 séances.
+  const ecart = (decalage: number) => {
+    const us = q("US10Y", 21);
+    const eu = q("EU10Y", 21);
+    const a = us.at(-1 - decalage);
+    const b = a ? [...eu].reverse().find((p) => p.date <= a.date) : undefined;
+    return a && b ? a.taux - b.taux : null;
+  };
+  const e0 = ecart(0);
+  const e20 = ecart(20);
   return {
     ecartFed: ffr !== null && un !== null && deux !== null ? (un + deux) / 2 - ffr : null,
     d1y5: variation("US1Y", 5), d2y5: variation("US2Y", 5), d2y20: variation("US2Y", 20),
@@ -82,8 +100,11 @@ function mesures(q: (cle: string, max: number) => PointTaux[], cot: { net: numbe
     structure: v !== null && v3 ? v / v3 : null,
     hy: dernier("HY"), hyVar5: variation("HY", 5), hyVar20: variation("HY", 20),
     dxy20: variationPct("DXY", 20), nfci: dernier("NFCI"), nfciVar4: variation("NFCI", 4),
-    wti63: variationPct("WTI", 63),
+    wti20: variationPct("WTI", 20), wti63: variationPct("WTI", 63),
+    d10b5: variation("EU10Y", 5), ecartUsEu: e0, ecartUsEuVar20: e0 !== null && e20 !== null ? e0 - e20 : null,
+    or5: variationPct("XAU", 5), usdjpy5: variationPct("USDJPY", 5), usdchf5: variationPct("USDCHF", 5),
     cotCentile: net === undefined || cot.length < 26 ? null : cot.filter((p) => p.net <= net).length / cot.length,
+    gerants, gerantsVar4: contrats !== null && contratsAvant !== null && oi ? (contrats - contratsAvant) / oi : null,
   };
 }
 
@@ -129,13 +150,16 @@ export function rejouer(donnees: DonneesHistoriques, du: string, au: string): { 
       const regles = REGLES_BIAIS.indices[indice];
       const r = combiner([
         facteurFed(indice, q("US2Y", d, 6), q("FFR", d, 5), connus(donnees.decisions, d, DELAIS.decisions, 6), d, q("US1Y", d, 6)),
-        facteurTaux(indice, q("US10Y", d, 10), q("US10R", d, 10), d, "FRED (DGS10, DFII10)"),
+        facteurTaux(indice, q("US10Y", d, 10), q("US10R", d, 10), d, "FRED (DGS10, DFII10), BCE (courbe AAA)", q("EU10Y", d, 10)),
         facteurMacro(indice, publications, d, "FRED (BLS, BEA)"),
         facteurRegimeMacro(indice, cycle, q("WTI", d, 70), d),
         facteurLiquidite(indice, q("WALCL", d, 10), q("TGA", d, 10), q("RRP", d, 30), q("M2", d, 15), d),
-        facteurDollar(indice, q("DXY", d, 25), d),
+        facteurDollar(indice, q("DXY", d, 25), d, q("US10Y", d, 25), q("EU10Y", d, 30)),
+        facteurPetrole(indice, q("WTI", d, 25), d),
         facteurCourbe(indice, q("US3M", d, 5), q("US2Y", d, 5), q("US10Y", d, 5), d),
-        facteurRisque(indice, q("VIX", d, 260), q("VIX3M", d, 5), d, q(REGLES_BIAIS.risque.credit, d, 5)),
+        facteurRisque(indice, q("VIX", d, 260), q("VIX3M", d, 5), d, q(REGLES_BIAIS.risque.credit, d, 10), {
+          or: q("XAU", d, 12), usdjpy: q("USDJPY", d, 10), usdchf: q("USDCHF", d, 10),
+        }),
         facteurConditions(indice, q("NFCI", d, 8), d),
         facteurPositionnement(indice, connus(donnees.cot[regles.cot] ?? [], d, DELAIS.COT, REGLES_BIAIS.positionnement.semainesHistorique), d),
       ]);
@@ -147,7 +171,12 @@ export function rejouer(donnees: DonneesHistoriques, du: string, au: string): { 
       const apres5 = cours[i + 4]?.taux;
       const apres20 = cours[i + 19]?.taux;
       const cotConnu = connus(donnees.cot[regles.cot] ?? [], d, DELAIS.COT, REGLES_BIAIS.positionnement.semainesHistorique)
-        .filter((p) => p.interet_ouvert > 0).map((p) => ({ net: (p.fonds_long - p.fonds_court) / p.interet_ouvert }));
+        .filter((p) => p.interet_ouvert > 0).map((p) => ({
+          net: (p.fonds_long - p.fonds_court) / p.interet_ouvert,
+          gerants: p.gerants_long === undefined || p.gerants_court === undefined ? null : (p.gerants_long - p.gerants_court) / p.interet_ouvert,
+          contrats: p.gerants_long === undefined || p.gerants_court === undefined ? null : p.gerants_long - p.gerants_court,
+          oi: p.interet_ouvert,
+        }));
       const notes: Record<string, number | null> = {
         ...Object.fromEntries(r.facteurs.map((f) => [f.cle, f.note])),
         ...mesures((cle, max) => q(cle, d, max), cotConnu),

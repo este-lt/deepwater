@@ -22,11 +22,15 @@ async function lireBarres(cle: string, contrat: string, du: string, avant: strin
   for (let page = 0; url && page < 3; page++) {
     if (page > 0) await attendre(PAUSE_MS);
     const reponse = await fetch(url, { headers: { Authorization: `Bearer ${cle}` } });
-    if (reponse.status === 401 || reponse.status === 403) {
-      throw new Error(`Massive refuse l'accès (${reponse.status}) : clé invalide ou offre sans accès aux contrats à terme.`);
+    if (!reponse.ok) {
+      // Message de Massive (statut et explication, jamais la clé), pour le journal.
+      const detail = (await reponse.text().catch(() => "")).replaceAll(cle, "***").slice(0, 300);
+      if (reponse.status === 401 || reponse.status === 403) {
+        throw new Error(`Massive refuse l'accès (${reponse.status}) : clé invalide ou offre sans accès aux contrats à terme. Réponse : ${detail}`);
+      }
+      if (reponse.status === 429) throw new Error(`Massive : limite de 5 appels par minute atteinte. Réponse : ${detail}`);
+      throw new Error(`Massive ${contrat} : HTTP ${reponse.status}. Réponse : ${detail}`);
     }
-    if (reponse.status === 429) throw new Error("Massive : limite de 5 appels par minute atteinte.");
-    if (!reponse.ok) throw new Error(`Massive ${contrat} : HTTP ${reponse.status}`);
     const corps = await reponse.json() as { results?: { window_start: number | string; open: number; close: number }[]; next_url?: string };
     for (const b of corps.results ?? []) {
       const debut = Math.round(Number(b.window_start) / 1e6); // nanosecondes -> millisecondes
