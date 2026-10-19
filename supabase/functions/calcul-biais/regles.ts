@@ -11,7 +11,7 @@
 // redéployer la fonction calcul-biais et changer `version` pour tracer les biais concernés.
 
 export const REGLES_BIAIS = {
-  version: "2026-10-19b",
+  version: "2026-10-19c",
 
   // Conversion du score (entre -1 et +1) en biais.
   seuils: { haussier: 0.2, baissier: -0.2 },
@@ -22,22 +22,26 @@ export const REGLES_BIAIS = {
   indices: {
     SPX: {
       libelle: "S&P 500",
-      poids: { fed: 0.2, taux: 0.15, macro: 0.15, cycle: 0.15, dollar: 0.1, courbe: 0.05, risque: 0.1, conditions: 0.1 },
+      poids: { fed: 0.18, taux: 0.14, macro: 0.14, cycle: 0.12, liquidite: 0.1, dollar: 0.08, courbe: 0.04, risque: 0.1, conditions: 0.05, positionnement: 0.05 },
+      // Contrat à terme du rapport COT de la CFTC (positionnement).
+      cot: "13874A",
       // Indice de volatilité implicite propre à l'indice.
       volatilite: "VIX",
     },
     NDX: {
       libelle: "Nasdaq-100",
       // Les valeurs technologiques réagissent davantage aux taux longs.
-      poids: { fed: 0.2, taux: 0.2, macro: 0.1, cycle: 0.15, dollar: 0.1, courbe: 0.05, risque: 0.1, conditions: 0.1 },
+      poids: { fed: 0.18, taux: 0.18, macro: 0.1, cycle: 0.12, liquidite: 0.1, dollar: 0.08, courbe: 0.04, risque: 0.1, conditions: 0.05, positionnement: 0.05 },
+      cot: "209742",
       volatilite: "VXN",
     },
   },
 
-  // Politique de la Fed : ce que le marché anticipe (taux à 2 ans contre taux effectif des
-  // Fed funds) et le sens de la dernière décision. Hausse anticipée ou décidée = baissier.
+  // Politique de la Fed : ce que le marché anticipe (taux à 1 an et à 2 ans contre taux
+  // effectif des Fed funds) et le sens de la dernière décision. Hausse anticipée ou décidée
+  // = baissier.
   fed: {
-    ecartPleinPts: 0.5, // 2 ans 0,5 pt au-dessus des Fed funds -> note -1 (hausses anticipées)
+    ecartPleinPts: 0.5, // 1 an et 2 ans 0,5 pt au-dessus des Fed funds -> note -1 (hausses anticipées)
     partAnticipation: 0.6,
     joursDecisionRecente: 200,
     joursMemeSens: 365,
@@ -60,10 +64,13 @@ export const REGLES_BIAIS = {
     ageMaxJours: 7,
   },
 
-  // Surprise macro : écart de la dernière publication par rapport à la précédente.
+  // Surprise macro : écart au consensus des chiffres américains publiés (fil instantané) et
+  // écart de la dernière publication FRED par rapport à la précédente.
   // sens : +1 si une hausse est favorable aux actions, -1 si elle est défavorable.
   macro: {
     fenetreJours: 45,
+    fenetreConsensusJours: 30,
+    partConsensus: 0.6, // quand des surprises face au consensus existent
     indicateurs: {
       CPI: { libelle: "Inflation", libelle_en: "Inflation", sens: -1, ecartPlein: 0.3, unite: "pt" },
       CORE_CPI: { libelle: "Inflation sous-jacente", libelle_en: "Core inflation", sens: -1, ecartPlein: 0.2, unite: "pt" },
@@ -117,9 +124,31 @@ export const REGLES_BIAIS = {
     ageMaxJours: 7,
   },
 
-  // Appétit pour le risque : volatilité implicite des options (VIX ou VXN) et spread de
-  // crédit à haut rendement. Une volatilité au-dessus de sa médiane d'un an ou un spread
-  // qui s'écarte = baissier.
+  // Liquidité de la Fed : liquidité nette (bilan de la Fed moins compte du Trésor moins
+  // prises en pension inversées) sur 4 semaines, et croissance de la masse monétaire M2.
+  liquidite: {
+    semaines: 4,
+    variationPleineMd: 150, // +150 Md$ de liquidité nette en 4 semaines -> note +1
+    m2Neutre: 4, // croissance de M2 sur 1 an jugée neutre (%)
+    m2Plein: 4,
+    partNette: 0.7,
+    ageMaxJours: 14,
+    ageMaxJoursM2: 95, // M2 d'un mois paraît environ quatre semaines après sa fin
+  },
+
+  // Positionnement (rapport COT de la CFTC) : position nette des fonds à effet de levier en
+  // part de l'intérêt ouvert, comparée à ses 3 dernières années. Un positionnement extrême
+  // est fragile (lecture contrarienne) : très acheteurs = baissier, très vendeurs = haussier.
+  positionnement: {
+    semainesHistorique: 156,
+    ecartPlein: 0.4, // centile 90 % (0,5 + 0,4) -> note -1
+    ageMaxJours: 14,
+  },
+
+  // Appétit pour le risque : volatilité implicite des options (VIX ou VXN), structure par
+  // terme (VIX contre VIX à 3 mois) et spread de crédit à haut rendement. Une volatilité
+  // au-dessus de sa médiane d'un an, une structure inversée ou un spread qui s'écarte =
+  // baissier.
   risque: {
     seancesVariation: 5,
     joursMediane: 365,
@@ -127,7 +156,10 @@ export const REGLES_BIAIS = {
     variationPleineVolPts: 5, // +5 points en 5 séances -> note -1
     credit: "HY",
     variationPleineCreditPts: 0.4, // spread +0,40 pt en 5 séances -> note -1
-    partVolatilite: 0.6,
+    partVolatilite: 0.45,
+    partStructure: 0.2, // le reste : crédit
+    structureNeutre: 0.9, // VIX / VIX3M habituel (structure normale)
+    structurePleine: 0.15, // ratio 1,05 -> note -1 ; 0,75 -> note +1
     ageMaxJours: 7,
   },
 
@@ -144,4 +176,4 @@ export const REGLES_BIAIS = {
 };
 
 export type CleIndice = keyof typeof REGLES_BIAIS.indices;
-export type CleFacteur = "fed" | "taux" | "macro" | "cycle" | "dollar" | "courbe" | "risque" | "conditions";
+export type CleFacteur = "fed" | "taux" | "macro" | "cycle" | "liquidite" | "dollar" | "courbe" | "risque" | "conditions" | "positionnement";

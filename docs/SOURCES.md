@@ -178,18 +178,20 @@ variation de cours, ni niveau graphique) : uniquement des données concrètes.
   Nasdaq-100, 10 ans, VIX, EUR, JPY, AUD, or, WTI, bitcoin). **Couverture** : actif détenable
   le plus négativement corrélé au S&P 500 sur 60 séances (or, yen, franc suisse, obligations),
   proposé seulement sous −0,2.
-- **Force des 8 devises** (six facteurs) : portage, taux directeur face à la moyenne des 8
-  (15 %) ; taux réel, taux directeur moins inflation (15 %) ; orientation de la banque
-  centrale (20 %) ; croissance et emploi, PIB et évolution du chômage (15 %) ; sentiment
-  risk-on/risk-off (15 %, devises de risque AUD, NZD, CAD contre refuges JPY, CHF, USD) ;
-  corrélations inter-marchés (20 %, fiche « Value Asset Corrélations » d'Aupa Traders) :
+- **Force des 8 devises** (sept facteurs) : portage, taux directeur face à la moyenne des 8
+  (13 %) ; taux réel, taux directeur moins inflation (13 %) ; orientation de la banque
+  centrale (18 %) ; croissance et emploi, PIB, évolution du chômage et chiffres face au
+  consensus sur 30 jours (14 %) ; sentiment risk-on/risk-off (12 %, devises de risque AUD,
+  NZD, CAD contre refuges JPY, CHF, USD) ; positionnement COT des fonds à effet de levier,
+  centile sur 3 ans, lecture contrarienne (12 %, sauf USD) ; corrélations inter-marchés
+  (18 %, fiche « Value Asset Corrélations » d'Aupa Traders) :
   pétrole → CAD, or → CHF et JPY, S&P 500 → AUD et NZD (CHF à l'inverse), yuan → AUD,
   dollar → CAD (même sens) et EUR, JPY, AUD, NZD (sens inverse), euro → GBP, AUD → NZD.
   Actifs moteurs mesurés par leur variation sur 20 séances (pétrole ±10 %, or et S&P 500
   ±5 %, yuan ±1,5 % = note pleine) ; devises moteurs par leur score fondamental, jamais par
   leur cours. Le dollar n'a pas de moteur dans la fiche : facteur indisponible pour l'USD.
-- **Paires** : devise forte contre devise faible ; étoiles = nombre des six facteurs qui
-  vont dans le même sens (6 étoiles : tous).
+- **Paires** : devise forte contre devise faible ; étoiles = nombre des sept facteurs qui
+  vont dans le même sens (7 étoiles : tous).
 - **Rapports** quotidien et hebdomadaire (`/rapport`) : synthèse rédigée par règles, banques
   centrales, agenda, plus forts mouvements, fil instantané ; dans la langue de l'utilisateur.
 
@@ -219,29 +221,68 @@ Sur iPhone : Safari, Partager, « Sur l'écran d'accueil » ouvre Deepwater en p
 Scoring automatique basé sur des règles, pas une prédiction garantie ni un conseil en
 investissement. Règles : `supabase/functions/calcul-biais/regles.ts`.
 
-Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026, version b).
+Uniquement des données concrètes, aucune analyse technique (règles du 19/10/2026, version c).
 
 | Facteur | Donnée | Poids S&P 500 / Nasdaq-100 |
 |---|---|---|
-| Politique de la Fed | ce que le marché anticipe (taux à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 20 % / 20 % |
-| Taux longs | moitié variation sur 5 séances (taux à 10 ans 60 %, taux réel à 10 ans 40 %), moitié niveau du taux réel à 10 ans face à un repère neutre fixe de 1,5 % (1 pt au-dessus = note −1) | 15 % / 20 % |
-| Surprise macro | publications des 45 derniers jours comparées aux précédentes | 15 % / 10 % |
-| Régime macroéconomique | croissance (emplois créés sur 3 mois face à 100 k par mois, chômage sur 3 mois, PIB annualisé face à 2 %) et inflation (PCE sous-jacent face à la cible de 2 % de la Fed, accélération du CPI sur 3 mois, pétrole sur 3 mois) ; expansion, reflation, déflation ou stagflation ; note = 0,6 × croissance − 0,4 × inflation | 15 % / 15 % |
-| Dollar (DXY) | indice large du dollar sur 20 séances ; fiche de corrélations : dollar qui monte = baissier (+2 % = note −1) | 10 % / 10 % |
-| Courbe des taux | 10 ans − 2 ans et 10 ans − 3 mois ; inversion = baissier (−0,5 pt = note −1), pente normale plafonnée à +0,5 | 5 % / 5 % |
-| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances ; spread haut rendement sur 5 séances | 10 % / 10 % |
-| Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 10 % / 10 % |
+| Politique de la Fed | ce que le marché anticipe (moyenne des écarts taux à 1 an et à 2 ans contre taux effectif des Fed funds, 60 %) et sens de la dernière décision de moins de 200 jours (40 %) ; hausse = baissier | 18 % / 18 % |
+| Taux longs | moitié variation sur 5 séances (taux à 10 ans 60 %, taux réel à 10 ans 40 %), moitié niveau du taux réel à 10 ans face à un repère neutre fixe de 1,5 % (1 pt au-dessus = note −1) | 14 % / 18 % |
+| Surprise macro | chiffres américains face au consensus sur 30 jours (60 %, fil instantané) et publications FRED des 45 derniers jours face aux précédentes (40 %) | 14 % / 10 % |
+| Régime macroéconomique | croissance (emplois créés sur 3 mois face à 100 k par mois, chômage sur 3 mois, PIB annualisé face à 2 %) et inflation (PCE sous-jacent face à la cible de 2 %, accélération du CPI sur 3 mois, pétrole sur 3 mois) ; note = 0,6 × croissance − 0,4 × inflation | 12 % / 12 % |
+| Liquidité de la Fed | liquidité nette (bilan − compte du Trésor − prises en pension inversées) sur 4 semaines (70 %, +150 Md$ = note +1) et M2 sur 1 an face à 4 % (30 %) | 10 % / 10 % |
+| Dollar (DXY) | indice large du dollar sur 20 séances ; dollar qui monte = baissier (+2 % = note −1) | 8 % / 8 % |
+| Courbe des taux | 10 ans − 2 ans et 10 ans − 3 mois ; inversion = baissier (−0,5 pt = note −1), pente normale plafonnée à +0,5 | 4 % / 4 % |
+| Appétit pour le risque | VIX (ou VXN) face à sa médiane d'un an et sur 5 séances (45 %), structure VIX / VIX3M (20 %, 0,9 neutre, 1,05 = note −1), spread haut rendement sur 5 séances (35 %) | 10 % / 10 % |
+| Conditions financières | NFCI de la Fed de Chicago : niveau (60 %) et variation sur 4 semaines (40 %) | 5 % / 5 % |
+| Positionnement (COT) | fonds à effet de levier nets en part de l'intérêt ouvert (contrats E-mini S&P 500 et Nasdaq-100), centile sur 3 ans ; lecture contrarienne (centile 90 = note −1) | 5 % / 5 % |
 
-Concepts sans donnée gratuite en base, donc absents du calcul : Bunds, masse monétaire M2 et
-liquidité mondiale, ISM, PMI, salaire horaire moyen, bilan de la Fed (QE/QT), projections du
-FOMC, contrats à terme sur taux courts, consensus publié, COT, positionnement et sentiment des
-particuliers, ratios de valorisation (CAPE, Market Cap / M2), rotations sectorielles.
+Concepts sans donnée gratuite structurée, donc absents du calcul : ISM, PMI, projections du
+FOMC, futures sur Fed funds (approchés par les bons du Trésor), sentiment des particuliers,
+ratios de valorisation (CAPE, prime de risque actions), rotations sectorielles.
 
 Note de −1 à +1 par facteur, moyenne pondérée, haussier ≥ +0,2, baissier ≤ −0,2.
 Facteur sans donnée récente : « indisponible », poids retiré ; pas de biais avec moins de
-la moitié du poids. Le cours de l'indice n'entre plus dans le calcul. Calcul unique pour tous, depuis la base
-seulement ; automatique à 8 h 30 (New York) si un utilisateur l'active, sinon manuel
-(un calcul toutes les 5 minutes par compte). Jours fériés boursiers non gérés.
+la moitié du poids. Calcul unique pour tous, depuis la base seulement ; automatique à
+8 h 30 (New York) si un utilisateur l'active, sinon manuel (un calcul toutes les 5 minutes
+par compte). Jours fériés de la Bourse de New York gérés. Chaque version des règles est
+enregistrée telle quelle (`regles_versions`, page Admin).
+
+### Historique de performance
+
+Mode `historique` de `calcul-biais` (`{"mode":"historique","annee":2024,"trimestre":1}`) :
+les règles en vigueur rejouées séance par séance avec uniquement ce qui était publié avant
+la séance (délais de publication de chaque série dans `historique.ts`), résultats dans
+`historique_biais` et `regimes_historiques`. Un trimestre par appel (limite de calcul des
+Edge Functions). Rejoué de 2021 à 2026 : la macro américaine en base ne remonte qu'à
+octobre 2020. Limites : séries FRED révisées (pas les premières estimations) ; pas
+d'historique du consensus. Fiche par régime : `fiche_regimes(version)`.
+
+Résultat au 19/10/2026 (règles 2026-10-19c, 2021-2026, environ 1 450 séances par indice) :
+sur le S&P 500, biais haussier juste 54,9 % du temps (293 séances) pour 53,4 % de séances
+en hausse en moyenne ; biais baissier juste 51,9 % (183 séances) pour 46,6 % de séances en
+baisse. Sur le Nasdaq-100 : 56,5 % pour 54,9 %, et 49,7 % pour 45,1 %. L'avantage existe
+surtout du côté baissier et reste faible : le biais résume le contexte fondamental, ce
+n'est pas un signal d'entrée.
+
+## Données fondamentales (`collecte-fondamentaux`, `collecte-marches`)
+
+- **Anticipations de taux** : bons du Trésor à 1, 3 et 6 mois, taux à 1 et 2 ans (FRED
+  DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2) contre Fed funds effectif (DFF) ; taux à terme entre
+  deux échéances pour chaque réunion du FOMC. Approximation des futures sur Fed funds
+  (non gratuits), décalée de quelques points de base.
+- **Prime de terme à 10 ans** : modèle Kim-Wright de la Fed (THREEFYTP10), hebdomadaire.
+- **Zone euro** : courbe AAA de la BCE à 2 et 10 ans (API de données de la BCE, YC),
+  chaque jour ouvré à 16 h 45 UTC.
+- **Liquidité** : bilan de la Fed (WALCL), compte du Trésor (WTREGEN), prises en pension
+  inversées (RRPONTSYD), M2 (M2SL).
+- **COT** : CFTC, Traders in Financial Futures (jeu gpe5-46if, sans clé), le lundi et le
+  samedi ; 10 contrats (E-mini S&P 500 et Nasdaq-100, 10 ans, 7 devises).
+- **Consensus** : titres du fil instantané au format FinancialJuice (« Actual … (Forecast …,
+  Previous …) ») ou InvestingLive (« … vs … expected »), toutes les 15 minutes ; rien n'est
+  retenu sans consensus chiffré.
+- **Alertes de marché** (même webhook que les alertes de fonctionnement) : VIX ≥ 25,
+  structure VIX / VIX3M inversée, spread haut rendement +0,3 pt en 5 séances, changement de
+  biais, surprise américaine d'au moins 80 sur 100.
 
 ## Hébergement et exploitation
 

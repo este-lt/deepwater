@@ -72,16 +72,17 @@ Deno.test("Force des devises : AUD fort (portage, taux réel, hausses de taux, c
     aujourdhui: "2026-10-17",
   });
   assertEquals(forces[0].devise, "AUD");
-  assertEquals(forces.at(-1)!.devise, "JPY");
+  // JPY (taux réel très négatif) parmi les deux devises les plus faibles.
+  assert(forces.slice(-2).some((f) => f.devise === "JPY"), forces.map((f) => f.devise).join(","));
   assertEquals(forces[0].orientation, "restrictive");
   assertEquals(forces[0].dernierMouvement, { date: "2026-09-30", ecartPb: 25 });
   const paires = classerPaires(forces);
-  assertEquals(paires[0].paire, "AUD/JPY");
-  assertEquals(paires[0].sens, "achat");
+  const audJpy = paires.find((p) => p.paire === "AUD/JPY")!;
+  assertEquals(audJpy.sens, "achat");
   // Les cinq facteurs fondamentaux vont dans le même sens ; les corrélations (dollar seul ici)
   // pèsent autant sur l'AUD que sur le JPY : 5 étoiles sur 6.
-  assertEquals(paires[0].etoiles, 5);
-  assertEquals(Object.keys(forces[0].facteurs), ["portage", "tauxReel", "orientation", "macro", "regime", "intermarche"]);
+  assertEquals(audJpy.etoiles, 5);
+  assertEquals(Object.keys(forces[0].facteurs), ["portage", "tauxReel", "orientation", "macro", "regime", "positionnement", "intermarche"]);
 });
 
 Deno.test("Corrélations inter-marchés (fiche Aupa Traders) : pétrole -> CAD, or et S&P 500 -> CHF, dollar -> EUR", () => {
@@ -91,7 +92,7 @@ Deno.test("Corrélations inter-marchés (fiche Aupa Traders) : pétrole -> CAD, 
       USD: [d("2025-12-11", 3.625), d("2026-09-17", 3.875)], EUR: [d("2026-06-17", 2.25)], GBP: [d("2025-12-18", 3.75)],
       CHF: [d("2025-06-20", 0)], CAD: [d("2025-10-30", 2.25)], AUD: [d("2026-09-30", 4.6)], NZD: [d("2026-09-03", 2.75)], JPY: [d("2026-09-24", 1.25)],
     },
-    inflation: {}, chomage: {}, pib: {}, regime: 0, aujourdhui: "2026-10-17",
+    inflation: { CHF: [d("2026-08-01", 0.2)] }, chomage: {}, pib: {}, regime: 0, aujourdhui: "2026-10-17",
   };
   const parDevise = (moteurs: Record<string, number | null>) =>
     new Map(calculerForceDevises({ ...base, moteurs }).map((f) => [f.devise, f]));
@@ -112,4 +113,21 @@ Deno.test("Corrélations inter-marchés (fiche Aupa Traders) : pétrole -> CAD, 
   const sans = parDevise({ petrole: null, or: null, sp500: null, yuan: null });
   assertEquals(sans.get("CHF")!.facteurs.intermarche, null);
   assert(sans.get("CHF")!.score !== null, "score sans corrélations");
+});
+
+Deno.test("Devises : surprises face au consensus et positionnement COT contrarien", () => {
+  const d = (date: string, valeur: number) => ({ date, valeur });
+  const decisions = Object.fromEntries(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"].map((x) => [x, [d("2026-01-01", 2), d("2026-09-01", 2)]]));
+  const semaines = (dernier: number) => Array.from({ length: 52 }, (_, i) => ({ date: new Date(Date.UTC(2025, 9, 14) + i * 7 * 86_400_000).toISOString().slice(0, 10), net: i === 51 ? dernier : 0 }));
+  const forces = new Map(calculerForceDevises({
+    decisions, inflation: {}, chomage: {}, pib: {}, regime: 0, aujourdhui: "2026-10-17",
+    consensus: { GBP: [1, 0.5] },
+    cot: { EUR: semaines(0.3), JPY: semaines(-0.3) },
+  }).map((f) => [f.devise, f]));
+  // GBP : chiffres au-dessus du consensus -> croissance et emploi positifs.
+  assertAlmostEquals(forces.get("GBP")!.facteurs.macro!, 0.75, 1e-9);
+  // EUR : fonds très acheteurs (centile maximal) -> -1 ; JPY : très vendeurs -> positif.
+  assertEquals(forces.get("EUR")!.facteurs.positionnement, -1);
+  assert(forces.get("JPY")!.facteurs.positionnement! > 0.9, `JPY ${forces.get("JPY")!.facteurs.positionnement}`);
+  assertEquals(forces.get("USD")!.facteurs.positionnement, null);
 });

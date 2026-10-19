@@ -5,7 +5,9 @@ import {
   facteurCourbe,
   facteurDollar,
   facteurFed,
+  facteurLiquidite,
   facteurMacro,
+  facteurPositionnement,
   facteurRegimeMacro,
   facteurRisque,
   facteurTaux,
@@ -13,6 +15,7 @@ import {
   type PointTaux,
   seanceVisee,
 } from "./facteurs.ts";
+import { DELAIS, rejouer, statistiques } from "./historique.ts";
 
 function egal<T>(libelle: string, reel: T, attendu: T) {
   if (reel !== attendu) throw new Error(`${libelle} : obtenu ${reel}, attendu ${attendu}`);
@@ -151,12 +154,73 @@ Deno.test("synthèse : facteur indisponible retiré, pas de biais sous la moiti�
   const conditions = facteurConditions("SPX", [{ date: jourAvant(7), taux: -0.5 }], "2026-10-16");
   const macro = facteurMacro("SPX", [], "2026-10-16", "av");
   const partiel = combiner([fed, conditions, macro]);
-  // Fed (0,2) + conditions (0,1) sur 0,45 : 67 % disponibles.
+  // Fed (0,18) + conditions (0,05) sur 0,37 : 62 % disponibles.
   if (!partiel.ok) throw new Error(partiel.raison);
-  // Contributions arrondies : 0,2 x -1 / 0,3 = -0,667 ; 0,1 x 1 / 0,3 = 0,333 ; score -0,334 -> baissier.
-  egal("score", partiel.score, -0.334);
+  // Contributions arrondies : 0,18 x -1 / 0,23 = -0,783 ; 0,05 x 1 / 0,23 = 0,217 ; score -0,566 -> baissier.
+  egal("score", partiel.score, -0.566);
   egal("biais", partiel.biais, "baissier");
   egal("raisons", partiel.raisons.length, 2);
   const trop = combiner([conditions, macro, facteurFed("SPX", [], [], [], "2026-10-16")]);
   egal("moins de la moitié des poids", trop.ok, false);
+});
+
+Deno.test("Fed : le taux à 1 an complète le taux à 2 ans", () => {
+  const f = facteurFed("SPX", [point(1, 4.77)], [point(1, 3.88)], [], "2026-10-16", [point(1, 4.49)]);
+  // Écart moyen (0,89 + 0,61) / 2 = 0,75 -> note -1.
+  egal("note", f.note, -1);
+  if (!f.texte.includes("Taux à 1 an 4,49 %, à 2 ans 4,77 %") || !f.texte.includes("écart moyen +75 pb")) throw new Error(f.texte);
+});
+
+Deno.test("risque : structure de la volatilité inversée (VIX au-dessus du VIX3M) = baissier", () => {
+  const vix = [point(1, 30)];
+  const vix3m = [point(1, 25)];
+  const f = facteurRisque("SPX", [], [], "2026-10-16", vix, vix3m);
+  // Ratio 1,2 : -borner((1,2 - 0,9) / 0,15) = -1.
+  egal("note", f.note, -1);
+  if (!f.texte.includes("structure inversée")) throw new Error(f.texte);
+});
+
+Deno.test("macro : surprises face au consensus (inflation au-dessus = baissier, emplois au-dessus = haussier)", () => {
+  const f = facteurMacro("SPX", [], "2026-10-16", "FRED", [
+    { libelle: "US CPI YoY", publie: 3.7, prevision: 3.6, unite: "%", surprise: 0.5, sens: -1, instant: "2026-10-15T12:30:00Z" },
+    { libelle: "US Nonfarm Payrolls", publie: 29, prevision: 110, unite: "K", surprise: -1, sens: 1, instant: "2026-10-03T12:30:00Z" },
+  ]);
+  // (-1 x 0,5 + 1 x -1) / 2 = -0,75.
+  egal("note", f.note, -0.75);
+  if (!f.texte.startsWith("Face au consensus (2 chiffres") || !f.texte.includes("US CPI YoY 3,7 % contre 3,6 % attendu")) throw new Error(f.texte);
+});
+
+Deno.test("liquidité : liquidité nette en hausse et M2 dynamique = haussier", () => {
+  // Bilan +150 Md$ en 4 semaines, compte du Trésor et RRP stables ; M2 +8 % sur 1 an.
+  const semaines = (debut: number, pas: number) => Array.from({ length: 5 }, (_, i) => point(28 - i * 7, debut + i * pas));
+  const f = facteurLiquidite("SPX", semaines(6_600_000, 37_500), semaines(850_000, 0), semaines(1, 0),
+    [{ date: "2025-08-01", taux: 100 }, { date: "2026-08-01", taux: 108 }], "2026-10-16");
+  egal("note", f.note, 1);
+  if (!f.texte.includes("(+150 Md$ en 4 semaines)") || !f.texte.includes("M2 +8,0 % sur 1 an")) throw new Error(f.texte);
+});
+
+Deno.test("positionnement : fonds très acheteurs (centile élevé) = baissier, lecture contrarienne", () => {
+  const cot = Array.from({ length: 60 }, (_, i) => ({ date: jourAvant((59 - i) * 7 + 3), interet_ouvert: 1000, fonds_long: 100 + i * 5, fonds_court: 200 }));
+  const f = facteurPositionnement("SPX", cot, "2026-10-16");
+  egal("note", f.note, -1); // dernier point = maximum, centile 100 %
+  if (!f.texte.includes("positionnement acheteur extrême")) throw new Error(f.texte);
+  egal("trop court", facteurPositionnement("SPX", cot.slice(-10), "2026-10-16").statut, "indisponible");
+});
+
+Deno.test("historique : jamais de donnée avant sa publication, rendements de la séance", () => {
+  // Cours du S&P 500 sur 40 séances et taux à 2 ans connus seulement la veille.
+  const jours = Array.from({ length: 40 }, (_, i) => new Date(Date.UTC(2026, 0, 5) + i * 86_400_000).toISOString().slice(0, 10));
+  const spx = jours.map((date, i) => ({ date, taux: 100 + i }));
+  const plat = (v: number) => jours.map((date) => ({ date, taux: v }));
+  const { lignes } = rejouer({
+    series: { SPX: spx, US2Y: plat(4.5), FFR: plat(4), US1Y: plat(4.3), US10Y: plat(4), US10R: plat(2), VIX: plat(15), NFCI: plat(-0.3) },
+    decisions: [], macro: {}, cot: {},
+  }, jours[30], jours[35]);
+  const premiere = lignes.find((l) => l.indice === "SPX")!;
+  egal("date", premiere.date, jours[30]);
+  // Rendement de la séance : 130 / 129 - 1.
+  egal("rendement", premiere.rendement_1j, Math.round((130 / 129 - 1) * 1e6) / 1e4);
+  egal("délai quotidien", DELAIS.quotidien, 1);
+  const s = statistiques(lignes);
+  egal("séances", s.seances, lignes.length);
 });

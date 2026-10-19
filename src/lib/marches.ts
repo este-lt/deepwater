@@ -28,8 +28,8 @@ export interface LigneMarche {
   ancienne: boolean;
 }
 
-// Séries hebdomadaires ou publiées avec décalage : plus de tolérance avant l'alerte.
-const TOLERANCE_JOURS: Record<string, number> = { NFCI: 10, DXY: 12, WTI: 6, BRENT: 6, NATGAS: 6 };
+// Séries hebdomadaires, mensuelles ou publiées avec décalage : plus de tolérance avant l'alerte.
+const TOLERANCE_JOURS: Record<string, number> = { NFCI: 10, DXY: 12, WTI: 6, BRENT: 6, NATGAS: 6, WALCL: 10, TGA: 10, RRP: 5, TP10: 12, M2: 70 };
 
 // Valeur numérique ou null : une valeur non numérique en base (NaN, infini) est ignorée.
 export const num = (v: unknown): number | null => {

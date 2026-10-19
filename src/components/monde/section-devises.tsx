@@ -3,7 +3,7 @@ import { type CleFacteur, type ForceDevise, type LienIntermarche, type Moteur, t
 import { formaterDateSeance, formaterPb, formaterPct } from "@/lib/format";
 import { type Langue, traducteur } from "@/lib/i18n";
 
-// Six facteurs (aucune analyse technique) : une étoile par facteur aligné.
+// Sept facteurs (aucune analyse technique) : une étoile par facteur aligné.
 export const FACTEURS: Record<CleFacteur, { fr: string; en: string; court: string; courtEn: string }> = {
   portage: { fr: "Portage (taux directeur face aux autres)", en: "Carry (policy rate vs the others)", court: "P", courtEn: "C" },
   tauxReel: { fr: "Taux réel (taux directeur moins inflation)", en: "Real rate (policy rate minus inflation)", court: "R", courtEn: "R" },
@@ -11,6 +11,7 @@ export const FACTEURS: Record<CleFacteur, { fr: string; en: string; court: strin
   macro: { fr: "Croissance et emploi", en: "Growth and jobs", court: "C", courtEn: "G" },
   regime: { fr: "Sentiment risk-on / risk-off", en: "Risk-on / risk-off sentiment", court: "S", courtEn: "M" },
   intermarche: { fr: "Corrélations inter-marchés (pétrole, or, S&P 500, yuan, devises moteurs)", en: "Intermarket correlations (oil, gold, S&P 500, yuan, driver currencies)", court: "I", courtEn: "I" },
+  positionnement: { fr: "Positionnement des fonds (COT, lecture contrarienne)", en: "Fund positioning (COT, contrarian reading)", court: "F", courtEn: "P" },
 };
 
 const NOMS_MOTEURS: Record<Moteur, [string, string]> = {
@@ -68,8 +69,8 @@ export function SectionDevises({ forces, paires, langue }: { forces: ForceDevise
       pied={
         <p className="text-xs text-discret">
           {t(
-            "Scoring automatique par règles, aucune analyse technique (pondérations : portage 15 %, taux réel 15 %, orientation 20 %, croissance et emploi 15 %, sentiment 15 %, corrélations inter-marchés 20 %), pas un conseil en investissement. Corrélations (fiche Aupa Traders) : pétrole → CAD, or → CHF et JPY, S&P 500 → AUD, NZD (et CHF à l'inverse), yuan → AUD, dollar → EUR, JPY, AUD, NZD (à l'inverse) et CAD, euro → GBP, AUD → NZD ; actifs sur 20 séances, devises moteurs par leur score fondamental. Étoiles : nombre de facteurs qui donnent le même sens à la paire (6 étoiles : tous).",
-            "Automatic rules-based score, no technical analysis (weights: carry 15%, real rate 15%, stance 20%, growth and jobs 15%, sentiment 15%, intermarket correlations 20%), not investment advice. Correlations (Aupa Traders sheet): oil → CAD, gold → CHF and JPY, S&P 500 → AUD, NZD (and CHF inversely), yuan → AUD, dollar → EUR, JPY, AUD, NZD (inversely) and CAD, euro → GBP, AUD → NZD; assets over 20 sessions, driver currencies by their fundamental score. Stars: number of factors pointing the same way for the pair (6 stars: all).",
+            "Scoring automatique par règles, aucune analyse technique (pondérations : portage 13 %, taux réel 13 %, orientation 18 %, croissance et emploi avec surprises face au consensus 14 %, sentiment 12 %, corrélations inter-marchés 18 %, positionnement COT 12 %), pas un conseil en investissement. Corrélations (fiche Aupa Traders) : pétrole → CAD, or → CHF et JPY, S&P 500 → AUD, NZD (et CHF à l'inverse), yuan → AUD, dollar → EUR, JPY, AUD, NZD (à l'inverse) et CAD, euro → GBP, AUD → NZD ; actifs sur 20 séances, devises moteurs par leur score fondamental. Positionnement : fonds à effet de levier très acheteurs d'une devise = fragile. Étoiles : nombre de facteurs qui donnent le même sens à la paire (7 étoiles : tous).",
+            "Automatic rules-based score, no technical analysis (weights: carry 13%, real rate 13%, stance 18%, growth and jobs with consensus surprises 14%, sentiment 12%, intermarket correlations 18%, COT positioning 12%), not investment advice. Correlations (Aupa Traders sheet): oil → CAD, gold → CHF and JPY, S&P 500 → AUD, NZD (and CHF inversely), yuan → AUD, dollar → EUR, JPY, AUD, NZD (inversely) and CAD, euro → GBP, AUD → NZD; assets over 20 sessions, driver currencies by their fundamental score. Positioning: leveraged funds heavily long a currency = fragile. Stars: number of factors pointing the same way for the pair (7 stars: all).",
           )}
         </p>
       }

@@ -171,14 +171,25 @@ export interface EntreeDevises {
   pib: Partial<Record<Devise, Point[]>>;
   regime: number | null;
   moteurs?: Partial<Record<ActifMoteur, number | null>>;
+  // Surprises face au consensus des 30 derniers jours, déjà orientées pour la devise (+1 :
+  // chiffre qui soutient la devise), entre -1 et +1.
+  consensus?: Partial<Record<Devise, number[]>>;
+  // Position nette des fonds à effet de levier en part de l'intérêt ouvert (rapport COT), par
+  // semaine et dans l'ordre chronologique.
+  cot?: Partial<Record<Devise, { date: string; net: number }[]>>;
   aujourdhui: string;
 }
 
-// Six facteurs, six étoiles possibles pour une paire.
-export type CleFacteur = "portage" | "tauxReel" | "orientation" | "macro" | "regime" | "intermarche";
+// Sept facteurs, sept étoiles possibles pour une paire.
+export type CleFacteur = "portage" | "tauxReel" | "orientation" | "macro" | "regime" | "intermarche" | "positionnement";
 export const POIDS_DEVISES: Record<CleFacteur, number> = {
-  portage: 0.15, tauxReel: 0.15, orientation: 0.2, macro: 0.15, regime: 0.15, intermarche: 0.2,
+  portage: 0.13, tauxReel: 0.13, orientation: 0.18, macro: 0.14, regime: 0.12, intermarche: 0.18, positionnement: 0.12,
 };
+// Famille d'un chiffre publié -> effet sur la devise du pays (chiffre au-dessus du consensus).
+export const SENS_DEVISE_FAMILLE: Record<string, number> = { inflation: 1, emploi: 1, croissance: 1, chomage: -1, autre: 0 };
+// Positionnement : semaines d'historique et écart au centile médian qui donne une note pleine.
+const COT_SEMAINES = 156;
+const COT_ECART_PLEIN = 0.4;
 // Sensibilité au régime : devises de risque (AUD, NZD, CAD) contre valeurs refuges (JPY, CHF, USD).
 const SENSIBILITE: Record<Devise, number> = { AUD: 1, NZD: 1, CAD: 0.6, GBP: 0.3, EUR: 0, USD: -0.6, CHF: -0.8, JPY: -1 };
 
@@ -265,16 +276,30 @@ export function calculerForceDevises(e: EntreeDevises): ForceDevise[] {
       orientation = borner(orientation + (delta > 0.3 ? 0.3 : delta < -0.3 ? -0.3 : 0));
     }
 
-    // Croissance et emploi : PIB sur 1 trimestre face à la moyenne, recul du chômage.
+    // Croissance et emploi : PIB sur 1 trimestre face à la moyenne, recul du chômage, chiffres
+    // publiés face au consensus.
     const pib = derniere(e.pib[d]);
     const ch = e.chomage[d] ?? [];
     const recul = ch.length >= 4 ? ch[ch.length - 1].valeur - ch[ch.length - 4].valeur : null;
-    const morceaux = [pib ? (pib.valeur - mPib) / 0.5 : null, recul === null ? null : -recul / 0.3].filter((x): x is number => x !== null);
+    const surprises = (e.consensus?.[d] ?? []).filter(Number.isFinite);
+    const morceaux = [
+      pib ? (pib.valeur - mPib) / 0.5 : null,
+      recul === null ? null : -recul / 0.3,
+      surprises.length ? moyenne(surprises) : null,
+    ].filter((x): x is number => x !== null);
     const macro = morceaux.length ? borner(moyenne(morceaux)) : null;
 
     const regime = e.regime === null ? null : borner(e.regime * SENSIBILITE[d]);
 
-    const fondamentaux = { portage, tauxReel, orientation, macro, regime };
+    // Positionnement (COT) : centile de la position nette des fonds sur 3 ans, lecture
+    // contrarienne (fonds très acheteurs de la devise = fragile).
+    const cot = (e.cot?.[d] ?? []).filter((p) => Number.isFinite(p.net) && joursEntre(p.date, e.aujourdhui) <= 400).slice(-COT_SEMAINES);
+    const derniereCot = cot.at(-1);
+    const positionnement = derniereCot && cot.length >= 26 && joursEntre(derniereCot.date, e.aujourdhui) <= 14
+      ? -borner((cot.filter((p) => p.net <= derniereCot.net).length / cot.length - 0.5) / COT_ECART_PLEIN)
+      : null;
+
+    const fondamentaux = { portage, tauxReel, orientation, macro, regime, positionnement };
     return { devise: d, fondamentaux, scoreBase: scorePondere(fondamentaux), dernierMouvement, orientationNote: orientation };
   });
   const scoreBase = new Map(bases.map((b) => [b.devise as Moteur, b.scoreBase]));
@@ -315,7 +340,7 @@ export interface Paire {
   paire: string; // "EUR/JPY"
   sens: "achat" | "vente";
   ecart: number;
-  etoiles: number; // 1 à 6 : facteurs qui vont dans le même sens
+  etoiles: number; // 1 à 7 : facteurs qui vont dans le même sens
   facteursAlignes: CleFacteur[];
 }
 
@@ -337,7 +362,7 @@ export function classerPaires(forces: ForceDevise[], max = 8): Paire[] {
         paire: `${base.devise}/${cote.devise}`,
         sens: ecart >= 0 ? "achat" : "vente",
         ecart: Math.abs(ecart),
-        etoiles: Math.max(1, Math.min(6, alignes.length)),
+        etoiles: Math.max(1, Math.min(7, alignes.length)),
         facteursAlignes: alignes,
       });
     }

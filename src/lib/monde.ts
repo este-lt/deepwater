@@ -12,6 +12,7 @@ import {
   type Paire,
   type Point,
   type Regime,
+  SENS_DEVISE_FAMILLE,
   variation,
 } from "./analyse";
 import { lireClotures } from "./marches";
@@ -137,10 +138,46 @@ export interface EtatAnalyses {
   dateMacro: string | null;
 }
 
+// Contrats à terme sur devises du rapport COT (cotés en devise contre dollar).
+export const COT_DEVISES: Record<string, Devise> = {
+  "099741": "EUR", "096742": "GBP", "097741": "JPY", "092741": "CHF", "090741": "CAD", "232741": "AUD", "112741": "NZD",
+};
+
+// Surprises face au consensus (30 jours) orientées pour la devise, et position nette des
+// fonds à effet de levier par devise (3 ans).
+async function lireConsensusEtCot(supabase: ClientSupabase) {
+  const [consensus, cot] = await Promise.all([
+    supabase.from("publications_consensus").select("devise, famille, surprise")
+      .in("devise", DEVISES).gte("instant", new Date(Date.now() - 30 * 86_400_000).toISOString()),
+    supabase.from("positions_cot").select("date, code, interet_ouvert, fonds_long, fonds_court")
+      .in("code", Object.keys(COT_DEVISES)).gte("date", new Date(Date.now() - (3 * 366 + 14) * 86_400_000).toISOString().slice(0, 10))
+      .order("date").limit(2000),
+  ]);
+  if (consensus.error) throw new Error(`Lecture du consensus impossible : ${consensus.error.message}`);
+  if (cot.error) throw new Error(`Lecture du rapport COT impossible : ${cot.error.message}`);
+  const surprises: Partial<Record<Devise, number[]>> = {};
+  for (const c of consensus.data ?? []) {
+    const sens = SENS_DEVISE_FAMILLE[c.famille] ?? 0;
+    if (sens !== 0) (surprises[c.devise as Devise] ??= []).push(sens * Number(c.surprise));
+  }
+  const positions: Partial<Record<Devise, { date: string; net: number }[]>> = {};
+  for (const l of cot.data ?? []) {
+    const devise = COT_DEVISES[l.code];
+    const oi = Number(l.interet_ouvert);
+    if (devise && oi > 0) (positions[devise] ??= []).push({ date: l.date, net: (Number(l.fonds_long) - Number(l.fonds_court)) / oi });
+  }
+  return { surprises, positions };
+}
+
 export async function lireAnalyses(supabase: ClientSupabase, monde: EtatMonde): Promise<EtatAnalyses> {
-  const clotures = Object.fromEntries(await lireClotures(supabase, SYMBOLES, 130));
+  const [clotures, { surprises, positions }] = await Promise.all([
+    lireClotures(supabase, SYMBOLES, 130).then((c) => Object.fromEntries(c)),
+    lireConsensusEtCot(supabase),
+  ]);
   const regime = calculerRegime(clotures);
   const forces = calculerForceDevises({
+    consensus: surprises,
+    cot: positions,
     decisions: monde.decisions,
     inflation: monde.inflation,
     chomage: monde.chomage,

@@ -20,7 +20,7 @@ export const CLASSES = [
   { cle: "indice", fr: "Indices actions", en: "Equity indices" },
   { cle: "volatilite", fr: "Volatilité", en: "Volatility" },
   { cle: "taux", fr: "Taux", en: "Rates" },
-  { cle: "credit", fr: "Crédit et conditions financières", en: "Credit and financial conditions" },
+  { cle: "credit", fr: "Crédit, liquidité et conditions financières", en: "Credit, liquidity and financial conditions" },
   { cle: "forex", fr: "Devises", en: "Currencies" },
   { cle: "matiere", fr: "Matières premières", en: "Commodities" },
   { cle: "crypto", fr: "Crypto", en: "Crypto" },

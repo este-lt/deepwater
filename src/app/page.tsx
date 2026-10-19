@@ -1,6 +1,10 @@
 import { SectionBiais } from "@/components/biais/section-biais";
 import { Carte } from "@/components/carte";
 import { Avertissement, EnTete } from "@/components/en-tete";
+import { SectionAnticipations } from "@/components/fondamentaux/section-anticipations";
+import { SectionConsensus } from "@/components/fondamentaux/section-consensus";
+import { SectionLiquidite } from "@/components/fondamentaux/section-liquidite";
+import { SectionPerformance } from "@/components/fondamentaux/section-performance";
 import { SectionMacro } from "@/components/macro/section-macro";
 import { SectionTaux } from "@/components/macro/section-taux";
 import { CarteInstrument } from "@/components/marches/carte-instrument";
@@ -16,6 +20,7 @@ import { Tableau, type Widget } from "@/components/tableau";
 import { SectionCalendrier } from "@/components/veille/calendrier";
 import { SectionSquawks, SectionVeille } from "@/components/veille/section-veille";
 import { lireBiais } from "@/lib/biais";
+import { lireFondamentaux } from "@/lib/fondamentaux";
 import { traducteur } from "@/lib/i18n";
 import { lireMacro, lireTaux } from "@/lib/macro";
 import { lireMarches, nomInstrument } from "@/lib/marches";
@@ -46,7 +51,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
   }
 
   const supabase = await supabaseUtilisateur();
-  const [marches, taux, macro, veille, squawks, calendrier, biais, monde] = await Promise.all([
+  const [marches, taux, macro, veille, squawks, calendrier, biais, monde, fondamentaux] = await Promise.all([
     lireMarches(supabase),
     lireTaux(supabase),
     lireMacro(supabase, langue),
@@ -55,6 +60,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
     lireCalendrier(supabase, langue),
     lireBiais(supabase),
     lireMonde(supabase),
+    lireFondamentaux(supabase),
   ]);
   const analyses = await lireAnalyses(supabase, monde);
   const indices = marches.filter((l) => l.prioritaire);
@@ -83,6 +89,9 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
       ),
     },
     { id: "biais", contenu: <SectionBiais etat={biais} langue={langue} /> },
+    { id: "performance", contenu: <SectionPerformance f={fondamentaux} langue={langue} /> },
+    { id: "anticipations", contenu: <SectionAnticipations f={fondamentaux} langue={langue} /> },
+    { id: "liquidite", contenu: <SectionLiquidite f={fondamentaux} langue={langue} /> },
     {
       id: "regime",
       contenu: (
@@ -108,6 +117,7 @@ export default async function TableauDeBord({ searchParams }: { searchParams: Pr
       ),
     },
     { id: "squawks", contenu: <SectionSquawks squawks={squawks} langue={langue} /> },
+    { id: "consensus", contenu: <SectionConsensus f={fondamentaux} langue={langue} /> },
     { id: "calendrier", contenu: <SectionCalendrier calendrier={calendrier} /> },
     {
       id: "banques",

@@ -193,10 +193,64 @@ export type QuotaRow = {
 export type AlerteRow = {
   id: number;
   nom_tache: string;
-  motif: "retard" | "echecs";
+  motif: "retard" | "echecs" | "marche";
   message: string;
   ouverte_le: string;
   resolue_le: string | null;
+}
+
+export type ConsensusRow = {
+  id: number;
+  empreinte: string;
+  instant: string;
+  devise: string | null;
+  libelle: string;
+  publie: number;
+  prevision: number;
+  precedent: number | null;
+  unite: string | null;
+  ecart: number;
+  surprise: number;
+  famille: string;
+  source: string;
+  titre: string;
+}
+
+export type CotRow = {
+  date: string;
+  code: string;
+  marche: string;
+  interet_ouvert: number;
+  gerants_long: number;
+  gerants_court: number;
+  fonds_long: number;
+  fonds_court: number;
+}
+
+export type HistoriqueBiaisRow = {
+  version: string;
+  date: string;
+  indice: string;
+  score: number;
+  biais: "haussier" | "baissier" | "neutre";
+  regime: string | null;
+  part_disponible: number;
+  rendement_1j: number | null;
+  rendement_5j: number | null;
+}
+
+export type RegimeHistoriqueRow = {
+  version: string;
+  mois: string;
+  regime: string;
+  croissance: number;
+  inflation: number;
+}
+
+export type RegleVersionRow = {
+  version: string;
+  regles: Json;
+  cree_le: string;
 }
 
 export type CollecteRow = {
@@ -239,10 +293,16 @@ export type Database = {
       quota_api: Table<QuotaRow>;
       collectes_planifiees: Table<CollecteRow>;
       alertes: Table<AlerteRow>;
+      publications_consensus: Table<ConsensusRow>;
+      positions_cot: Table<CotRow>;
+      historique_biais: Table<HistoriqueBiaisRow>;
+      regimes_historiques: Table<RegimeHistoriqueRow>;
+      regles_versions: Table<RegleVersionRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
       est_admin: { Args: never; Returns: boolean };
+      fiche_regimes: { Args: { p_version: string }; Returns: { regime: string; mois: number; actif: string; moyenne: number; hausse: number }[] };
       sante: { Args: never; Returns: Json };
       reserver_calcul_manuel: { Args: never; Returns: Json };
       derniere_reussite: { Args: { p_tache: string }; Returns: string | null };

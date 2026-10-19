@@ -30,13 +30,14 @@ export default async function PageAdmin() {
   const t = traducteur((await lirePreferences()).langue);
   const supabase = await supabaseUtilisateur();
 
-  const [alertes, taches, logs, cron, quota, premium] = await Promise.all([
+  const [alertes, taches, logs, cron, quota, premium, versions] = await Promise.all([
     supabase.from("alertes").select("*").order("ouverte_le", { ascending: false }).limit(15),
     supabase.from("taches_planifiees").select("*").order("nom_tache"),
     supabase.from("logs_taches").select("*").order("demarre_le", { ascending: false }).limit(60),
     supabase.rpc("admin_etat_cron"),
     supabase.from("quota_api").select("*").order("jour", { ascending: false }).limit(7),
     supabase.from("config_app").select("valeur").eq("cle", "av_premium").maybeSingle(),
+    supabase.from("regles_versions").select("version, regles, cree_le").order("cree_le", { ascending: false }).limit(10),
   ]);
 
   const journaux = (logs.data ?? []) as LogTacheRow[];
@@ -82,7 +83,7 @@ export default async function PageAdmin() {
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1 text-xs text-attenue">
                     <Pastille ton={a.resolue_le ? "hausse" : "baisse"}>
-                      {a.resolue_le ? t("Refermée", "Resolved") : a.motif === "retard" ? t("En retard", "Late") : t("Échecs répétés", "Repeated failures")}
+                      {a.resolue_le ? t("Refermée", "Resolved") : a.motif === "retard" ? t("En retard", "Late") : a.motif === "marche" ? t("Marché", "Market") : t("Échecs répétés", "Repeated failures")}
                     </Pastille>
                     <DateLocale iso={a.resolue_le ?? a.ouverte_le} />
                   </span>
@@ -182,6 +183,48 @@ export default async function PageAdmin() {
             </ul>
           </Carte>
         </div>
+
+        <Carte
+          titre={t("Versions des règles du biais", "Bias rules versions")}
+          sousTitre={t(
+            "Chaque version est enregistrée telle quelle au premier calcul ; chaque biais publié et chaque ligne d'historique porte sa version.",
+            "Each version is stored as is on its first calculation; every published bias and history row carries its version.",
+          )}
+        >
+          {(versions.data ?? []).length === 0 ? (
+            <p className="text-sm text-attenue">{t("Aucune version enregistrée.", "No version recorded.")}</p>
+          ) : (
+            <ul className="divide-y divide-bordure text-sm">
+              {(versions.data ?? []).map((v, i, liste) => {
+                const regles = v.regles as Record<string, unknown>;
+                const precedente = liste[i + 1]?.regles as Record<string, unknown> | undefined;
+                const modifiees = precedente
+                  ? [...new Set([...Object.keys(regles), ...Object.keys(precedente)])].filter((k) => k !== "version" && JSON.stringify(regles[k]) !== JSON.stringify(precedente[k]))
+                  : [];
+                const indices = (regles.indices ?? {}) as Record<string, { poids?: Record<string, number> }>;
+                return (
+                  <li key={v.version} className="flex flex-col gap-1 py-2.5">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="chiffres font-medium">{v.version}</span>
+                      {i === 0 && <Pastille ton="accent">{t("en vigueur", "current")}</Pastille>}
+                      <span className="text-xs text-attenue"><DateLocale iso={v.cree_le} /></span>
+                    </span>
+                    {Object.entries(indices).map(([indice, def]) => (
+                      <span key={indice} className="chiffres text-xs text-attenue">
+                        {indice} : {Object.entries(def.poids ?? {}).map(([k, p]) => `${k} ${Math.round(p * 100)}`).join(" · ")}
+                      </span>
+                    ))}
+                    {precedente && (
+                      <span className="text-xs text-attenue">
+                        {t("Modifié depuis la version précédente :", "Changed since the previous version:")} {modifiees.length ? modifiees.join(", ") : t("rien", "nothing")}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Carte>
 
         <Carte titre={t("Journal", "Log")} sousTitre={t("60 dernières exécutions", "Last 60 runs")}>
           <ul className="divide-y divide-bordure text-sm">

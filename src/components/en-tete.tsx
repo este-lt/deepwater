@@ -3,6 +3,7 @@ import Link from "next/link";
 import { traducteur } from "@/lib/i18n";
 import { lirePreferences } from "@/lib/preferences";
 import { supabaseUtilisateur } from "@/lib/supabase";
+import { BarreCommandes } from "./barre-commandes";
 import { Logo } from "./logo";
 
 const LIEN = "whitespace-nowrap rounded-lg px-2.5 py-1.5 text-attenue transition-colors hover:bg-surface-2 hover:text-texte sm:px-3";
@@ -33,6 +34,7 @@ export async function EnTete({ estAdmin }: { estAdmin: boolean }) {
             className="w-full rounded-lg border border-bordure bg-surface px-3 py-1.5 text-sm placeholder:text-discret focus:border-accent/60"
           />
         </form>
+        <BarreCommandes estAdmin={estAdmin} />
         <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto text-sm">
           <Link href="/recherche" aria-label={t("Recherche globale", "Global search")} className={`${LIEN} lg:hidden`}>
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-4" aria-hidden>
